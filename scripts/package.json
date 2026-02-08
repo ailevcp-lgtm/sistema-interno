@@ -1,0 +1,19 @@
+{
+  "name": "aile-import-scripts",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "import": "npx tsx import-xlsx.ts"
+  },
+  "dependencies": {
+    "xlsx": "^0.18.5",
+    "dotenv": "^16.4.5",
+    "@supabase/supabase-js": "^2.95.3"
+  },
+  "devDependencies": {
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.0",
+    "@types/node": "^20.0.0"
+  }
+}
