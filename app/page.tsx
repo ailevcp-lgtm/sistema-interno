@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation'
+import OAuthRedirect from './oauth-redirect'
 
 export default async function HomePage({
   searchParams,
@@ -8,9 +9,10 @@ export default async function HomePage({
   const params = await searchParams
 
   // Si Supabase redirige el código OAuth a la raíz en vez de /auth/callback,
-  // reenviarlo a la ruta correcta para que se intercambie por una sesión.
+  // renderizar un componente client-side que usa detectSessionInUrl del
+  // browser client para intercambiar el código PKCE por una sesión.
   if (params.code) {
-    redirect(`/auth/callback?code=${encodeURIComponent(params.code)}`)
+    return <OAuthRedirect />
   }
 
   redirect('/dashboard')
