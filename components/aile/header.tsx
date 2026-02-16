@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { useAuth } from "@/hooks/useAuth"
 import { NotificationsPopover } from "@/components/aile/notifications-popover"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 
 const roleStyles: Record<string, { bg: string; text: string; label: string }> = {
   socio: { bg: "#f3f4f6", text: "#6b7280", label: "Socio" },
@@ -26,11 +27,12 @@ interface HeaderProps {
 }
 
 export function AileHeader({ currentPage, pageLabel }: HeaderProps) {
-  const { user: authUser } = useAuth()
+  const { user: authUser, signOut } = useAuth()
 
   const user = {
     name: authUser ? `${authUser.nombre} ${authUser.apellido}` : "",
     role: authUser?.rol || "socio",
+    avatarUrl: authUser?.avatar_url || "",
     initials: authUser ? `${authUser.nombre?.[0] || ""}${authUser.apellido?.[0] || ""}`.toUpperCase() : "",
   }
 
@@ -39,7 +41,7 @@ export function AileHeader({ currentPage, pageLabel }: HeaderProps) {
   return (
     <header className="sticky top-0 z-30 h-14 bg-card border-b border-border flex items-center justify-between px-4 lg:px-8">
       {/* Mobile: Logo */}
-      <div className="flex items-center gap-2.5 lg:hidden">
+      <Link href="/dashboard" className="flex items-center gap-2.5 lg:hidden">
         <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: "#6314a7" }}>
           <img
             src="/images/aile-logo-white.png"
@@ -48,7 +50,7 @@ export function AileHeader({ currentPage, pageLabel }: HeaderProps) {
           />
         </div>
         <span className="text-sm font-bold text-foreground tracking-wide">AILE</span>
-      </div>
+      </Link>
 
       {/* Desktop: Page title */}
       <div className="hidden lg:flex items-center gap-1.5 text-sm">
@@ -75,12 +77,15 @@ export function AileHeader({ currentPage, pageLabel }: HeaderProps) {
 
         <DropdownMenu>
           <DropdownMenuTrigger className="flex items-center gap-2 pl-2 pr-1.5 py-1 rounded-lg hover:bg-muted transition-colors outline-none">
-            <div
-              className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold text-white"
-              style={{ backgroundColor: "#6314a7" }}
-            >
-              {user.initials}
-            </div>
+            <Avatar className="w-7 h-7">
+              <AvatarImage src={user.avatarUrl} alt={user.name} />
+              <AvatarFallback
+                className="text-[11px] font-bold text-white"
+                style={{ backgroundColor: "#6314a7" }}
+              >
+                {user.initials}
+              </AvatarFallback>
+            </Avatar>
             <div className="hidden md:flex flex-col items-start">
               <span className="text-sm font-medium text-foreground leading-tight">{user.name}</span>
               <span
@@ -106,7 +111,13 @@ export function AileHeader({ currentPage, pageLabel }: HeaderProps) {
               </Link>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem className="gap-2 cursor-pointer text-destructive focus:text-destructive">
+            <DropdownMenuItem
+              className="gap-2 cursor-pointer text-destructive focus:text-destructive"
+              onSelect={(event) => {
+                event.preventDefault()
+                signOut()
+              }}
+            >
               <LogOut className="w-4 h-4" />
               Cerrar sesion
             </DropdownMenuItem>

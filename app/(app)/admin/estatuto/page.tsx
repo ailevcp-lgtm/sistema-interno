@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useDocumentos } from "@/hooks/useDocumentos"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -25,6 +25,7 @@ import { ArrowLeft, Pencil, FileText, Upload } from "lucide-react"
 import { toast } from "sonner"
 import Link from "next/link"
 import type { ArticuloEstatuto } from "@/lib/types"
+import { useResumeRefresh } from "@/hooks/useResumeRefresh"
 
 export default function AdminEstatutoPage() {
     const [articulos, setArticulos] = useState<ArticuloEstatuto[]>([])
@@ -35,7 +36,7 @@ export default function AdminEstatutoPage() {
 
     const { getEstatuto, updateArticulo, createArticulo, deleteArticulo, deleteAllArticulos, createArticulosBulk, getConfig, updateConfig } = useDocumentos()
 
-    const loadData = async () => {
+    const loadData = useCallback(async () => {
         setLoading(true)
         try {
             const [artData, configPdf] = await Promise.all([
@@ -50,11 +51,13 @@ export default function AdminEstatutoPage() {
         } finally {
             setLoading(false)
         }
-    }
+    }, [getConfig, getEstatuto])
 
     useEffect(() => {
-        loadData()
-    }, [])
+        void loadData()
+    }, [loadData])
+
+    useResumeRefresh(() => { void loadData() }, { throttleMs: 5_000 })
 
     const handleCreate = () => {
         setSelectedArt({

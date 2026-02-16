@@ -15,23 +15,12 @@ import type {
 } from '@/lib/types'
 import { useAuth } from './useAuth'
 import { toast } from 'sonner'
-
-interface RawJoinResult {
-  id: string
-  tipo: string
-  monto: number
-  fecha: string
-  periodo: string
-  descripcion: string
-  categoria_id: string | null
-  evento_id: string | null
-  cuenta_id: string | null
-  voluntario_nombre: string | null
-  comprobante_url: string | null
-  categoria: { id: string; nombre: string; tipo: string }[] | { id: string; nombre: string; tipo: string } | null
-  evento: { id: string; nombre: string }[] | { id: string; nombre: string } | null
-  cuenta: { id: string; nombre: string }[] | { id: string; nombre: string } | null
-}
+import {
+  getFinancialReferenceData,
+  invalidateFinancialReferenceData,
+} from '@/lib/finance-source'
+import { runWithRecovery } from '@/lib/async-recovery'
+import { useResumeRefresh } from '@/hooks/useResumeRefresh'
 
 interface RawMovimiento {
   id: string
@@ -50,15 +39,6 @@ interface RawMovimiento {
   cuenta?: { id: string; nombre: string } | null
 }
 
-function normalizeJoinResult(data: RawJoinResult[]): RawMovimiento[] {
-  return data.map(row => ({
-    ...row,
-    categoria: Array.isArray(row.categoria) ? row.categoria[0] || null : row.categoria,
-    evento: Array.isArray(row.evento) ? row.evento[0] || null : row.evento,
-    cuenta: Array.isArray(row.cuenta) ? row.cuenta[0] || null : row.cuenta,
-  }))
-}
-
 export function useFinanzas(filters: FinanceFilters = {}) {
   const { user } = useAuth()
   const [rawMovimientos, setRawMovimientos] = useState<RawMovimiento[]>([])
@@ -66,60 +46,83 @@ export function useFinanzas(filters: FinanceFilters = {}) {
   const [eventos, setEventos] = useState<Evento[]>([])
   const [availableYears, setAvailableYears] = useState<number[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   // ── Fetch all base data ────────────────────────────────
   const fetchData = useCallback(async () => {
     setLoading(true)
+    setError(null)
 
-    // Build query with filters
-    let query = supabase
-      .from('movimientos')
-      .select('id, tipo, monto, fecha, periodo, descripcion, categoria_id, evento_id, cuenta_id, voluntario_nombre, comprobante_url, categoria:categorias_financieras(id, nombre, tipo), evento:eventos(id, nombre), cuenta:cuentas(id, nombre)')
-      .order('fecha', { ascending: false })
+    try {
+      const buildMovementsQuery = () => {
+        let query = supabase
+          .from('movimientos')
+          .select('id, tipo, monto, fecha, periodo, descripcion, categoria_id, evento_id, cuenta_id, voluntario_nombre, comprobante_url')
+          .eq('anulado', false)
+          .order('fecha', { ascending: false })
 
-    if (filters.anio) {
-      const start = `${filters.anio}-01-01`
-      const end = `${filters.anio}-12-31`
-      query = query.gte('fecha', start).lte('fecha', end)
+        if (filters.anio) {
+          const start = `${filters.anio}-01-01`
+          const end = `${filters.anio}-12-31`
+          query = query.gte('fecha', start).lte('fecha', end)
+        }
+        if (filters.categoriaId) {
+          query = query.eq('categoria_id', filters.categoriaId)
+        }
+        if (filters.eventoId) {
+          query = query.eq('evento_id', filters.eventoId)
+        }
+
+        return query
+      }
+
+      const [movResult, referenceData] = await Promise.all([
+        runWithRecovery(
+          () => buildMovementsQuery(),
+          { label: 'movimientos financieros', timeoutMs: 8_000, retries: 1 }
+        ),
+        runWithRecovery(
+          () => getFinancialReferenceData(),
+          { label: 'financial references', timeoutMs: 8_000, retries: 1 }
+        ),
+      ])
+
+      if (movResult.error) {
+        throw movResult.error
+      }
+
+      const categoriasById = new Map(
+        referenceData.categorias.map((categoria) => [categoria.id, categoria])
+      )
+      const eventosById = new Map(
+        referenceData.eventos.map((evento) => [evento.id, evento])
+      )
+      const cuentasById = new Map(
+        referenceData.cuentas.map((cuenta) => [cuenta.id, cuenta])
+      )
+
+      const normalizedMovimientos = ((movResult.data || []) as RawMovimiento[]).map((row) => ({
+        ...row,
+        categoria: row.categoria_id ? categoriasById.get(row.categoria_id) ?? null : null,
+        evento: row.evento_id ? eventosById.get(row.evento_id) ?? null : null,
+        cuenta: row.cuenta_id ? cuentasById.get(row.cuenta_id) ?? null : null,
+      }))
+
+      setRawMovimientos(normalizedMovimientos)
+      setCategorias(referenceData.categorias)
+      setEventos(referenceData.eventos)
+      setAvailableYears(referenceData.availableYears)
+    } catch (error) {
+      console.error('Error fetching finance data:', error)
+      setError('No se pudieron cargar los datos financieros.')
+      toast.error('No se pudo cargar el dashboard financiero. Intenta nuevamente.')
+    } finally {
+      setLoading(false)
     }
-    if (filters.categoriaId) {
-      query = query.eq('categoria_id', filters.categoriaId)
-    }
-    if (filters.eventoId) {
-      query = query.eq('evento_id', filters.eventoId)
-    }
-
-    const [movResult, catResult, evResult, yearsResult] = await Promise.all([
-      query,
-      supabase.from('categorias_financieras').select('*').eq('activa', true).order('nombre'),
-      supabase.from('eventos').select('*').eq('activo', true).order('nombre'),
-      supabase.from('movimientos').select('fecha'),
-    ])
-
-    if (movResult.error) {
-      toast.error('Error al cargar movimientos')
-      console.error(movResult.error)
-    } else {
-      setRawMovimientos(normalizeJoinResult(movResult.data as RawJoinResult[]))
-    }
-
-    if (catResult.data) setCategorias(catResult.data as CategoriaFinanciera[])
-    if (evResult.data) setEventos(evResult.data as Evento[])
-
-    // Extract available years
-    if (yearsResult.data) {
-      const years = new Set<number>()
-      yearsResult.data.forEach(m => {
-        const y = new Date(m.fecha).getFullYear()
-        if (y >= 2024 && y <= 2030) years.add(y)
-      })
-      setAvailableYears(Array.from(years).sort((a, b) => b - a))
-    }
-
-    setLoading(false)
   }, [filters.anio, filters.categoriaId, filters.eventoId])
 
   useEffect(() => { fetchData() }, [fetchData])
+  useResumeRefresh(() => { void fetchData() }, { throttleMs: 5_000 })
 
   // ── Computed: Finance Summary (KPIs) ───────────────────
   const summary: FinanceSummary = useMemo(() => {
@@ -300,6 +303,8 @@ export function useFinanzas(filters: FinanceFilters = {}) {
       throw error
     }
 
+    invalidateFinancialReferenceData()
+
     await supabase.from('logs_actividad').insert([{
       usuario_id: user.id,
       accion: 'CREAR_MOVIMIENTO',
@@ -317,6 +322,7 @@ export function useFinanzas(filters: FinanceFilters = {}) {
     eventos,
     availableYears,
     loading,
+    error,
     // KPIs
     summary,
     // Computed views

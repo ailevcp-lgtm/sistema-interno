@@ -24,8 +24,11 @@ export const COLORS = {
 // Navegación principal
 export const NAV_ITEMS: NavItem[] = [
   { href: '/dashboard', label: 'Inicio', icon: 'Home' },
+  { href: '/calendario', label: 'Calendario', icon: 'CalendarDays' },
+  { href: '/tareas', label: 'Tareas', icon: 'KanbanSquare' },
   { href: '/socios', label: 'Socios', icon: 'Users' },
   { href: '/deudas', label: 'Deudas', icon: 'Wallet' },
+  { href: '/movimientos', label: 'Movimientos', icon: 'ArrowUpDown' },
   { href: '/finanzas', label: 'Finanzas', icon: 'BarChart3', hiddenRoles: ['socio'] },
   { href: '/tesoreria', label: 'Tesorería', icon: 'Landmark', hiddenRoles: ['socio'] },
   { href: '/documentos', label: 'Documentos', icon: 'FileText' },
@@ -35,6 +38,8 @@ export const NAV_ITEMS: NavItem[] = [
 // Navegación mobile (BottomNav)
 export const BOTTOM_NAV_ITEMS: NavItem[] = [
   { href: '/dashboard', label: 'Inicio', icon: 'Home' },
+  { href: '/calendario', label: 'Calendario', icon: 'CalendarDays' },
+  { href: '/tareas', label: 'Tareas', icon: 'KanbanSquare' },
   { href: '/socios', label: 'Socios', icon: 'Users' },
   { href: '/finanzas', label: 'Finanzas', icon: 'BarChart3', hiddenRoles: ['socio'] },
   { href: '/documentos', label: 'Documentos', icon: 'FileText' },
@@ -43,6 +48,9 @@ export const BOTTOM_NAV_ITEMS: NavItem[] = [
 // Más opciones para el menú mobile
 export const MORE_NAV_ITEMS: NavItem[] = [
   { href: '/deudas', label: 'Deudas', icon: 'Wallet' },
+  { href: '/movimientos', label: 'Movimientos', icon: 'ArrowUpDown' },
+  { href: '/calendario', label: 'Calendario', icon: 'CalendarDays' },
+  { href: '/tareas', label: 'Tareas', icon: 'KanbanSquare' },
   { href: '/configuracion', label: 'Configuración', icon: 'Settings', requiredRoles: ['comision_directiva', 'admin'] },
 ]
 
@@ -67,13 +75,30 @@ export const ROLES_AILE = [
   'Presidente',
   'Vicepresidente',
   'Secretario General',
+  'Director de Finanzas',
   'Tesorero',
+  'Revisor de Cuentas',
   'Vocal Titular',
   'Vocal Suplente',
   'Revisor de Cuentas Titular',
   'Revisor de Cuentas Suplente',
   'Socio',
 ] as const
+
+export const REINTEGROS_ALLOWED_ROLES_AILE = [
+  'Director de Finanzas',
+  'Tesorero',
+  'Presidente',
+  'Secretario General',
+] as const
+
+export function canAccessReintegrosModule(rol: Rol, rolAile?: string | null): boolean {
+  if (rol === 'admin') return true
+  if (!rolAile) return false
+  return REINTEGROS_ALLOWED_ROLES_AILE.some(
+    (allowed) => allowed.toLowerCase() === rolAile.toLowerCase()
+  )
+}
 
 // Categorías financieras por defecto
 export const DEFAULT_CATEGORIAS_INGRESOS = [

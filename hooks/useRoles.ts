@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Database } from '@/lib/database.types'
 import { toast } from 'sonner'
+import { runWithRecovery } from '@/lib/async-recovery'
+import { useResumeRefresh } from '@/hooks/useResumeRefresh'
 
 export type RolAileDefinition = {
     id: string
@@ -15,10 +16,12 @@ export function useRoles() {
     const fetchRoles = async () => {
         try {
             setLoading(true)
-            const { data, error } = await supabase
+            const { data, error } = await runWithRecovery(() => supabase
                 .from('rol_aile_definitions')
                 .select('*')
-                .order('nombre')
+                .order('nombre'), {
+                    label: 'roles institucionales',
+                })
 
             if (error) {
                 throw error
@@ -99,8 +102,9 @@ export function useRoles() {
 
     // Initial fetch
     useEffect(() => {
-        fetchRoles()
+        void fetchRoles()
     }, [])
+    useResumeRefresh(() => { void fetchRoles() }, { throttleMs: 5_000 })
 
     return {
         roles,

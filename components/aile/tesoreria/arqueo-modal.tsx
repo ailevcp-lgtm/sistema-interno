@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-import { useTesoreria, type CuentaConSaldo } from "@/hooks/useTesoreria"
+import type { CuentaConSaldo } from "@/hooks/useTesoreria"
 import { cn } from "@/lib/utils"
 import { Loader2 } from "lucide-react"
 
@@ -15,10 +15,10 @@ interface ArqueoModalProps {
     isOpen: boolean
     onClose: () => void
     onSuccess: () => void
+    registrarArqueo: (cuentaId: string, saldoReal: number, observaciones: string) => Promise<boolean | undefined>
 }
 
-export function ArqueoModal({ cuenta, isOpen, onClose, onSuccess }: ArqueoModalProps) {
-    const { registrarArqueo } = useTesoreria()
+export function ArqueoModal({ cuenta, isOpen, onClose, onSuccess, registrarArqueo }: ArqueoModalProps) {
     const [saldoReal, setSaldoReal] = useState("")
     const [observaciones, setObservaciones] = useState("")
     const [loading, setLoading] = useState(false)

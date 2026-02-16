@@ -134,7 +134,7 @@ export function SocioDialog({
                                 {getInitials(formData.nombre || "?", formData.apellido || "?")}
                             </AvatarFallback>
                         </Avatar>
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center justify-center gap-2">
                             <input
                                 type="file"
                                 ref={fileInputRef}
@@ -169,7 +169,7 @@ export function SocioDialog({
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div className="space-y-2">
                             <Label>Nombre</Label>
                             <Input
@@ -188,7 +188,7 @@ export function SocioDialog({
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div className="space-y-2">
                             <Label>DNI</Label>
                             <Input
@@ -238,7 +238,7 @@ export function SocioDialog({
                         />
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div className="space-y-2">
                             <Label>Teléfono</Label>
                             <Input

@@ -5,6 +5,8 @@ import { supabase } from '@/lib/supabase'
 import type { Socio, Cuota, EstadoSocio, EstadoCuota, Cuenta, PromocionCuota, MovimientoExtended, CuotaAplicacion } from '@/lib/types'
 import { getCurrentPeriodo } from '@/lib/utils'
 import { toast } from 'sonner'
+import { runWithRecovery } from '@/lib/async-recovery'
+import { useResumeRefresh } from '@/hooks/useResumeRefresh'
 
 // ─── Hook: useSocios ────────────────────────────────────────────
 
@@ -32,31 +34,39 @@ export function useSocios() {
   const pageSize = 15
 
   const fetchSocios = useCallback(async () => {
-    setLoading(true)
-    const { data, error } = await supabase
-      .from('socios')
-      .select(`
+    try {
+      setLoading(true)
+      const { data, error } = await runWithRecovery(() => supabase
+        .from('socios')
+        .select(`
         *,
         rol_aile_definition:rol_aile_definitions(nombre)
       `)
-      .order('apellido', { ascending: true })
+        .order('apellido', { ascending: true }), {
+          label: 'socios',
+        })
 
-    if (error) {
-      console.error('Error fetching socios:', error)
-      toast.error('Error al cargar socios')
-    } else {
+      if (error) {
+        throw error
+      }
+
       // @ts-ignore
       setSocios((data || []).map((s) => ({
         ...s,
         rol_aile: s.rol_aile_definition?.nombre || s.rol_aile
       })) as Socio[])
+    } catch (error) {
+      console.error('Error fetching socios:', error)
+      toast.error('Error al cargar socios')
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }, [])
 
   useEffect(() => {
-    fetchSocios()
+    void fetchSocios()
   }, [fetchSocios])
+  useResumeRefresh(() => { void fetchSocios() }, { throttleMs: 5_000 })
 
   const filtered = useMemo(() => {
     let result = [...socios]
@@ -267,65 +277,96 @@ export function useCuotas(socioId?: string) {
 
   // Fetch cuotas_categoria_id from configuracion
   const fetchConfig = useCallback(async () => {
-    const { data } = await supabase
-      .from('configuracion')
-      .select('valor')
-      .eq('clave', 'cuotas_categoria_id')
-      .single()
-    if (data) setCuotasCategoriaId(data.valor)
+    try {
+      const { data } = await runWithRecovery(() => supabase
+        .from('configuracion')
+        .select('valor')
+        .eq('clave', 'cuotas_categoria_id')
+        .single(), {
+          label: 'configuracion de cuotas',
+        })
+      if (data) setCuotasCategoriaId(data.valor)
+    } catch (error) {
+      console.error('Error fetching cuotas config:', error)
+    }
   }, [])
 
   // Fetch cuentas activas
   const fetchCuentas = useCallback(async () => {
-    const { data } = await supabase
-      .from('cuentas')
-      .select('*')
-      .eq('activa', true)
-      .order('nombre')
-    if (data) setCuentas(data as Cuenta[])
+    try {
+      const { data } = await runWithRecovery(() => supabase
+        .from('cuentas')
+        .select('*')
+        .eq('activa', true)
+        .order('nombre'), {
+          label: 'cuentas activas',
+        })
+      if (data) setCuentas(data as Cuenta[])
+    } catch (error) {
+      console.error('Error fetching cuentas:', error)
+    }
   }, [])
 
   // Fetch promociones activas
   const fetchPromociones = useCallback(async () => {
-    const { data } = await supabase
-      .from('promociones_cuotas')
-      .select('*')
-      .eq('activa', true)
-      .order('nombre')
-    if (data) setPromociones(data as PromocionCuota[])
+    try {
+      const { data } = await runWithRecovery(() => supabase
+        .from('promociones_cuotas')
+        .select('*')
+        .eq('activa', true)
+        .order('nombre'), {
+          label: 'promociones de cuotas',
+        })
+      if (data) setPromociones(data as PromocionCuota[])
+    } catch (error) {
+      console.error('Error fetching promociones:', error)
+    }
   }, [])
 
   const fetchCuotas = useCallback(async () => {
-    setLoading(true)
-    let query = supabase
-      .from('cuotas')
-      .select('*, socio:socios(id, nombre, apellido, dni, email)')
-      .order('periodo', { ascending: false })
+    try {
+      setLoading(true)
+      let query = supabase
+        .from('cuotas')
+        .select('*, socio:socios(id, nombre, apellido, dni, email)')
+        .order('periodo', { ascending: false })
 
-    if (socioId) {
-      query = query.eq('socio_id', socioId)
-    }
+      if (socioId) {
+        query = query.eq('socio_id', socioId)
+      }
 
-    const { data, error } = await query
+      const { data, error } = await runWithRecovery(() => query, {
+        label: 'cuotas',
+      })
 
-    if (error) {
-      console.error('Error fetching cuotas:', error)
-      toast.error('Error al cargar cuotas')
-    } else {
+      if (error) {
+        throw error
+      }
+
       setCuotas((data || []).map((c: Record<string, unknown>) => ({
         ...c,
         socio: c.socio as Socio | undefined,
       })) as (Cuota & { socio?: Socio })[])
+    } catch (error) {
+      console.error('Error fetching cuotas:', error)
+      toast.error('Error al cargar cuotas')
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }, [socioId])
 
   useEffect(() => {
-    fetchCuotas()
-    fetchConfig()
-    fetchCuentas()
-    fetchPromociones()
+    void fetchCuotas()
+    void fetchConfig()
+    void fetchCuentas()
+    void fetchPromociones()
   }, [fetchCuotas, fetchConfig, fetchCuentas, fetchPromociones])
+  useResumeRefresh(() => {
+    void fetchCuotas()
+    void fetchConfig()
+    void fetchCuentas()
+    void fetchPromociones()
+  }, { throttleMs: 5_000 })
 
   const filtered = useMemo(() => {
     let result = [...cuotas]
@@ -539,20 +580,26 @@ export function useCuotas(socioId?: string) {
   const fetchPagosSocio = useCallback(async (sid: string) => {
     if (!cuotasCategoriaId) return
 
-    setLoadingPagos(true)
-    const { data, error } = await supabase
-      .from('movimientos')
-      .select('*, cuenta:cuentas(id, nombre, tipo), cuota_aplicaciones:cuota_aplicaciones(id, cuota_id, monto_aplicado, cuota:cuotas(id, periodo, monto_esperado))')
-      .eq('socio_id', sid)
-      .eq('categoria_id', cuotasCategoriaId)
-      .order('fecha', { ascending: false })
+    try {
+      setLoadingPagos(true)
+      const { data, error } = await runWithRecovery(() => supabase
+        .from('movimientos')
+        .select('*, cuenta:cuentas(id, nombre, tipo), cuota_aplicaciones:cuota_aplicaciones(id, cuota_id, monto_aplicado, cuota:cuotas(id, periodo, monto_esperado))')
+        .eq('socio_id', sid)
+        .eq('categoria_id', cuotasCategoriaId)
+        .order('fecha', { ascending: false }), {
+          label: 'pagos de socio',
+        })
 
-    if (error) {
-      console.error('Error fetching pagos socio:', error)
-    } else {
+      if (error) {
+        throw error
+      }
       setPagosSocio((data || []) as unknown as PagoSocio[])
+    } catch (error) {
+      console.error('Error fetching pagos socio:', error)
+    } finally {
+      setLoadingPagos(false)
     }
-    setLoadingPagos(false)
   }, [cuotasCategoriaId])
 
   // Get cuotas pendientes for a specific socio
@@ -629,10 +676,12 @@ export function useCuotas(socioId?: string) {
 
   // Fetch all promos (including inactive) for management
   const fetchAllPromociones = useCallback(async () => {
-    const { data } = await supabase
+    const { data } = await runWithRecovery(() => supabase
       .from('promociones_cuotas')
       .select('*')
-      .order('nombre')
+      .order('nombre'), {
+        label: 'todas las promociones',
+      })
     return (data || []) as PromocionCuota[]
   }, [])
 

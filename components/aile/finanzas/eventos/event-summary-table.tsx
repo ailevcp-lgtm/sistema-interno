@@ -36,7 +36,7 @@ export function EventSummaryTable({ data }: Props) {
       </CardHeader>
       <CardContent className="p-0">
         <div className="overflow-x-auto">
-          <table className="w-full">
+          <table className="w-full min-w-[560px]">
             <thead>
               <tr className="border-b border-border bg-muted/30">
                 <th className="text-left text-xs text-foreground font-semibold p-3">Evento</th>

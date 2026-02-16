@@ -2,23 +2,33 @@
 
 import {
   LayoutGrid,
+  CalendarDays,
+  KanbanSquare,
   Users,
   CreditCard,
+  ArrowUpDown,
   BarChart2,
   FileText,
   Settings,
   Landmark,
+  ReceiptText,
   PanelLeftClose,
   PanelLeftOpen,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { useAuth } from "@/hooks/useAuth"
+import { canAccessReintegrosModule } from "@/lib/constants"
 
 const navItems = [
   { id: "dashboard", label: "Inicio", icon: LayoutGrid },
+  { id: "calendario", label: "Calendario", icon: CalendarDays },
+  { id: "tareas", label: "Tareas", icon: KanbanSquare },
   { id: "socios", label: "Socios", icon: Users },
   { id: "deudas", label: "Deudas", icon: CreditCard },
+  { id: "movimientos", label: "Movimientos", icon: ArrowUpDown },
   { id: "finanzas", label: "Finanzas", icon: BarChart2 },
   { id: "tesoreria", label: "Tesorería", icon: Landmark },
+  { id: "reintegros", label: "Reintegros", icon: ReceiptText, requiresReintegrosAccess: true },
   { id: "documentos", label: "Documentos", icon: FileText },
   { id: "configuracion", label: "Ajustes", icon: Settings },
 ]
@@ -31,6 +41,12 @@ interface SidebarProps {
 }
 
 export function AileSidebar({ currentPage, onNavigate, collapsed, onToggle }: SidebarProps) {
+  const { rol, rolAile } = useAuth()
+  const canAccessReintegros = canAccessReintegrosModule(rol, rolAile)
+  const visibleNavItems = navItems.filter((item) =>
+    item.requiresReintegrosAccess ? canAccessReintegros : true
+  )
+
   return (
     <aside
       className={cn(
@@ -66,7 +82,7 @@ export function AileSidebar({ currentPage, onNavigate, collapsed, onToggle }: Si
 
       {/* Nav */}
       <nav className="flex-1 py-4 px-2 flex flex-col gap-0.5">
-        {navItems.map((item) => {
+        {visibleNavItems.map((item) => {
           const isActive = currentPage === item.id
           return (
             <button

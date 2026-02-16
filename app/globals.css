@@ -47,10 +47,61 @@
 }
 
 @layer base {
+  html,
+  body {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
   * {
     @apply border-border;
   }
+
+  :where(
+    main,
+    section,
+    article,
+    aside,
+    header,
+    footer,
+    div,
+    button,
+    a,
+    input,
+    textarea,
+    select,
+    p,
+    span,
+    h1,
+    h2,
+    h3,
+    h4,
+    h5,
+    h6,
+    li,
+    td,
+    th,
+    label
+  ) {
+    min-width: 0;
+  }
+
+  :where(p, span, a, h1, h2, h3, h4, h5, h6, td, th, label, button) {
+    overflow-wrap: anywhere;
+  }
+
+  img,
+  svg,
+  video,
+  canvas {
+    max-width: 100%;
+    height: auto;
+  }
+
   body {
     @apply bg-background text-foreground;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
   }
 }

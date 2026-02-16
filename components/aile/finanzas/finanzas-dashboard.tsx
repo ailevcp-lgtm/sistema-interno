@@ -1,7 +1,7 @@
 "use client"
 
 import { Suspense, useMemo } from "react"
-import { Download } from "lucide-react"
+import { AlertTriangle, Download, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useFinanzas } from "@/hooks/useFinanzas"
@@ -21,7 +21,7 @@ function DashboardSkeleton() {
           <div key={i} className="h-9 w-32 bg-muted rounded" />
         ))}
       </div>
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {[1, 2, 3, 4].map((i) => (
           <div key={i} className="h-20 bg-muted rounded-lg" />
         ))}
@@ -52,6 +52,7 @@ function FinanzasDashboardInner() {
     eventos,
     availableYears,
     loading,
+    error,
     summary,
     monthlyDetail,
     categoryContribution,
@@ -59,6 +60,7 @@ function FinanzasDashboardInner() {
     getCategorySummary,
     getTransactionDetail,
     getEventComparison,
+    refreshData,
   } = useFinanzas(filters)
 
   const ingresosSummary = useMemo(() => getCategorySummary("ingreso"), [getCategorySummary])
@@ -69,6 +71,21 @@ function FinanzasDashboardInner() {
   const egresosEvents = useMemo(() => getEventComparison("egreso"), [getEventComparison])
 
   if (loading) return <DashboardSkeleton />
+  if (error) {
+    return (
+      <div className="rounded-xl border border-border bg-card p-6 flex flex-col items-center text-center gap-3">
+        <div className="w-10 h-10 rounded-full bg-destructive/10 flex items-center justify-center">
+          <AlertTriangle className="w-5 h-5 text-destructive" />
+        </div>
+        <p className="text-sm text-foreground font-medium">No se pudieron cargar las finanzas</p>
+        <p className="text-xs text-muted-foreground">Puede ser una conexión lenta o un timeout del servidor.</p>
+        <Button variant="outline" className="gap-2" onClick={refreshData}>
+          <RefreshCw className="w-4 h-4" />
+          Reintentar
+        </Button>
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col gap-4 lg:gap-6">
@@ -101,11 +118,11 @@ function FinanzasDashboardInner() {
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setTab}>
-        <TabsList className="bg-muted/50 h-9">
-          <TabsTrigger value="balance" className="text-xs data-[state=active]:bg-background">Balance</TabsTrigger>
-          <TabsTrigger value="ingresos" className="text-xs data-[state=active]:bg-background">Ingresos</TabsTrigger>
-          <TabsTrigger value="egresos" className="text-xs data-[state=active]:bg-background">Egresos</TabsTrigger>
-          <TabsTrigger value="eventos" className="text-xs data-[state=active]:bg-background">Eventos</TabsTrigger>
+        <TabsList className="bg-muted/50 h-9 overflow-x-auto justify-start w-full">
+          <TabsTrigger value="balance" className="text-xs data-[state=active]:bg-background shrink-0">Balance</TabsTrigger>
+          <TabsTrigger value="ingresos" className="text-xs data-[state=active]:bg-background shrink-0">Ingresos</TabsTrigger>
+          <TabsTrigger value="egresos" className="text-xs data-[state=active]:bg-background shrink-0">Egresos</TabsTrigger>
+          <TabsTrigger value="eventos" className="text-xs data-[state=active]:bg-background shrink-0">Eventos</TabsTrigger>
         </TabsList>
 
         <TabsContent value="balance" className="mt-4">

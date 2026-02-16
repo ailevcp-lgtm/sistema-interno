@@ -110,9 +110,9 @@ export function ResolutionEditor({
             const opt = {
                 margin: 10,
                 filename: `resolucion-${formData.numero}-${formData.anio}.pdf`,
-                image: { type: "jpeg", quality: 0.98 },
+                image: { type: "jpeg" as const, quality: 0.98 },
                 html2canvas: { scale: 2 },
-                jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+                jsPDF: { unit: "mm" as const, format: "a4" as const, orientation: "portrait" as const },
             }
 
             // Generate PDF blob
@@ -167,12 +167,12 @@ export function ResolutionEditor({
     }
 
     return (
-        <div className="flex flex-col gap-6 p-6 max-w-4xl mx-auto bg-card rounded-lg border border-border shadow-sm">
-            <div className="flex items-center justify-between">
+        <div className="mx-auto flex max-w-4xl flex-col gap-6 rounded-lg border border-border bg-card p-4 sm:p-6 shadow-sm">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <h2 className="text-xl font-bold">
                     {initialData ? "Editar Resolución" : "Nueva Resolución"}
                 </h2>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                     <Button variant="outline" onClick={onCancel}>
                         Cancelar
                     </Button>
@@ -193,7 +193,7 @@ export function ResolutionEditor({
                         placeholder="Ej: Aprobación de Balance 2025"
                     />
                 </div>
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div className="space-y-2">
                         <Label>Número</Label>
                         <Input
@@ -261,7 +261,7 @@ export function ResolutionEditor({
             </div>
 
             <div className="border border-border rounded-md">
-                <div className="flex items-center justify-between p-2 border-b border-border bg-muted/30">
+                <div className="flex flex-col gap-2 border-b border-border bg-muted/30 p-2 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex gap-1 overflow-x-auto">
                         <Button
                             variant="ghost"
@@ -298,7 +298,7 @@ export function ResolutionEditor({
                             List
                         </Button>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2">
                         <Button
                             variant="outline"
                             size="sm"
@@ -335,7 +335,7 @@ export function ResolutionEditor({
                 </div>
 
                 {previewMode ? (
-                    <div className="p-8 prose prose-sm max-w-none bg-white text-black min-h-[300px]">
+                    <div className="p-4 sm:p-8 prose prose-sm max-w-none bg-white text-black min-h-[300px]">
                         <div className="text-right mb-4">
                             <p className="font-bold">RESOLUCIÓN N° {String(formData.numero).padStart(3, "0")}/{formData.anio}</p>
                             <p>Buenos Aires, {new Date(formData.fecha).toLocaleDateString("es-AR", { day: "numeric", month: "long", year: "numeric" })}</p>

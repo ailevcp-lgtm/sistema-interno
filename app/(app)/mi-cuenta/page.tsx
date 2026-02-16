@@ -41,7 +41,7 @@ export default function MiCuentaPage() {
 
     if (!userData) {
         return (
-            <div className="max-w-4xl mx-auto p-6">
+            <div className="max-w-4xl mx-auto p-3 sm:p-6">
                 <Card className="border-border">
                     <CardContent className="p-8 text-center text-muted-foreground">
                         No tienes una cuenta de socio asociada. Contacta a un administrador.
@@ -97,7 +97,7 @@ export default function MiCuentaPage() {
                                     const estado = ESTADO_CUOTA_INLINE[cuota.estado] || {}
                                     const pendiente = cuota.monto_esperado - cuota.monto_pagado
                                     return (
-                                        <div key={cuota.id} className="flex items-center justify-between p-4 rounded-lg bg-muted/40 border border-border">
+                                        <div key={cuota.id} className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-4 rounded-lg bg-muted/40 border border-border">
                                             <div className="space-y-1">
                                                 <p className="font-medium text-lg">{formatPeriodo(cuota.periodo)}</p>
                                                 <div className="flex gap-2">
@@ -115,9 +115,9 @@ export default function MiCuentaPage() {
                                                     )}
                                                 </div>
                                             </div>
-                                            <div className="text-right">
+                                            <div className="text-left sm:text-right">
                                                 <p className="font-bold text-xl">{formatARS(pendiente)}</p>
-                                                <Button size="sm" className="mt-2 h-8" variant="outline">
+                                                <Button size="sm" className="mt-2 h-8 w-full sm:w-auto" variant="outline">
                                                     Informar pago
                                                 </Button>
                                             </div>

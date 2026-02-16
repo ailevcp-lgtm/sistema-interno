@@ -18,17 +18,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Separator } from '@/components/ui/separator'
 import { Progress } from '@/components/ui/progress'
 import { SocioDialog } from '@/components/aile/socio-dialog'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
 import type { Socio } from '@/lib/types'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import {
   ArrowLeft,
   Edit,
@@ -46,15 +36,12 @@ export default function SocioDetailPage() {
   const params = useParams()
   const { user } = useAuth()
   const { getSocio, updateSocio, uploadAvatar } = useSocios()
-  const { cuotas: allCuotas, registrarPago } = useCuotas(params.id as string)
+  const { cuotas: allCuotas } = useCuotas(params.id as string)
 
   const socio = getSocio(params.id as string)
   const canEdit = !!user && hasPermission(user.rol, 'socios', 'editar')
 
-  const [showPagoModal, setShowPagoModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
-  const [selectedCuota, setSelectedCuota] = useState<Cuota | null>(null)
-  const [pagoData, setPagoData] = useState({ monto: '', fecha: new Date().toISOString().split('T')[0] })
 
   const handleSaveSocio = async (data: Partial<Socio>) => {
     if (!socio) return
@@ -93,22 +80,6 @@ export default function SocioDetailPage() {
   const totalDeuda = allCuotas
     .filter(c => c.estado === 'vencida' || c.estado === 'pendiente' || c.estado === 'parcial')
     .reduce((sum, c) => sum + (c.monto_esperado - c.monto_pagado), 0)
-
-  const handleRegistrarPago = () => {
-    if (selectedCuota && pagoData.monto) {
-      registrarPago(selectedCuota.id, parseFloat(pagoData.monto), pagoData.fecha)
-      setShowPagoModal(false)
-      setSelectedCuota(null)
-      setPagoData({ monto: '', fecha: new Date().toISOString().split('T')[0] })
-    }
-  }
-
-  const openPagoModal = (cuota: Cuota) => {
-    setSelectedCuota(cuota)
-    const remaining = cuota.monto_esperado - cuota.monto_pagado
-    setPagoData({ ...pagoData, monto: remaining.toString() })
-    setShowPagoModal(true)
-  }
 
   return (
     <div className="space-y-6">
@@ -286,7 +257,6 @@ export default function SocioDetailPage() {
                         <CuotaItem
                           key={cuota.id}
                           cuota={cuota}
-                          onRegistrarPago={() => openPagoModal(cuota)}
                           canEdit={canEdit}
                         />
                       ))}
@@ -340,53 +310,6 @@ export default function SocioDetailPage() {
         </div>
       </div>
 
-      {/* Pago Modal */}
-      <Dialog open={showPagoModal} onOpenChange={setShowPagoModal}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Registrar pago</DialogTitle>
-            <DialogDescription>
-              {selectedCuota && (
-                <>Cuota {selectedCuota.periodo} - Restante: {formatARS(selectedCuota.monto_esperado - selectedCuota.monto_pagado)}</>
-              )}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>Monto pagado</Label>
-              <Input
-                type="number"
-                value={pagoData.monto}
-                onChange={(e) => setPagoData({ ...pagoData, monto: e.target.value })}
-                placeholder="0.00"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Fecha de pago</Label>
-              <Input
-                type="date"
-                value={pagoData.fecha}
-                onChange={(e) => setPagoData({ ...pagoData, fecha: e.target.value })}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setShowPagoModal(false)}
-            >
-              Cancelar
-            </Button>
-            <Button
-              onClick={handleRegistrarPago}
-              className="bg-primary hover:bg-primary/90 text-primary-foreground border-0"
-            >
-              Registrar pago
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       {socio && (
         <SocioDialog
           open={showEditModal}
@@ -402,11 +325,9 @@ export default function SocioDetailPage() {
 
 function CuotaItem({
   cuota,
-  onRegistrarPago,
   canEdit,
 }: {
   cuota: Cuota
-  onRegistrarPago: () => void
   canEdit: boolean
 }) {
   const estadoColors = ESTADO_CUOTA_COLORS[cuota.estado]
@@ -426,13 +347,14 @@ function CuotaItem({
             {cuota.estado}
           </Badge>
           {canEdit && cuota.estado !== 'pagada' && (
-            <Button
-              size="sm"
-              onClick={onRegistrarPago}
-              className="bg-primary hover:bg-primary/90 text-primary-foreground"
-            >
-              Pagar
-            </Button>
+            <Link href="/deudas">
+              <Button
+                size="sm"
+                className="bg-primary hover:bg-primary/90 text-primary-foreground"
+              >
+                Pagar
+              </Button>
+            </Link>
           )}
         </div>
       </div>

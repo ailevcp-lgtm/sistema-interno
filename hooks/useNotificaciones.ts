@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import type { Notificacion } from '@/lib/types'
 import { toast } from 'sonner'
+import { runWithRecovery } from '@/lib/async-recovery'
 
 export function useNotificaciones() {
     const [notificaciones, setNotificaciones] = useState<Notificacion[]>([])
@@ -10,14 +11,20 @@ export function useNotificaciones() {
     const { user } = useAuth()
 
     const fetchNotificaciones = useCallback(async () => {
-        if (!user) return
+        if (!user) {
+            setNotificaciones([])
+            setLoading(false)
+            return
+        }
 
         setLoading(true)
-        const { data, error } = await supabase
+        const { data, error } = await runWithRecovery(() => supabase
             .from('notificaciones')
             .select('*')
             .eq('usuario_id', user.id)
-            .order('created_at', { ascending: false })
+            .order('created_at', { ascending: false }), {
+                label: 'notificaciones',
+            })
 
         if (error) {
             console.error('Error fetching notifications:', error)
@@ -25,7 +32,7 @@ export function useNotificaciones() {
             setNotificaciones(data as Notificacion[])
         }
         setLoading(false)
-    }, [user, supabase])
+    }, [user])
 
     useEffect(() => {
         fetchNotificaciones()
@@ -51,7 +58,7 @@ export function useNotificaciones() {
         return () => {
             supabase.removeChannel(channel)
         }
-    }, [user, fetchNotificaciones, supabase])
+    }, [user, fetchNotificaciones])
 
     const markAsRead = async (id: string) => {
         try {

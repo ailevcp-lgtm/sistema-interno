@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
 import {
   Users,
@@ -10,6 +10,7 @@ import {
   ArrowRight,
   TrendingUp,
   TrendingDown,
+  KanbanSquare,
   Loader2,
 } from 'lucide-react'
 import { cn, formatARS } from '@/lib/utils'
@@ -20,6 +21,8 @@ import type { Rol, Resolucion } from '@/lib/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import { runWithRecovery } from '@/lib/async-recovery'
+import { useResumeRefresh } from '@/hooks/useResumeRefresh'
 
 interface DashboardStats {
   sociosActivos: number
@@ -46,26 +49,28 @@ export default function DashboardPage() {
   const apellido = user?.apellido || ''
   const rolColors = ROL_COLORS[rol as Rol]
 
-  useEffect(() => {
-    fetchDashboardData()
-    fetchResolucionesRecientes()
-  }, [])
-
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = useCallback(async () => {
     try {
       setLoading(true)
 
-      // Socios activos
-      const { count: sociosActivos } = await supabase
-        .from('socios')
-        .select('*', { count: 'exact', head: true })
-        .eq('estado', 'activo')
+      const [sociosResult, cuotasResult, resolucionesResult] = await Promise.all([
+        runWithRecovery(() => supabase
+          .from('socios')
+          .select('*', { count: 'exact', head: true })
+          .eq('estado', 'activo'), { label: 'dashboard socios activos' }),
+        runWithRecovery(() => supabase
+          .from('cuotas')
+          .select('socio_id, monto_esperado, monto_pagado')
+          .in('estado', ['vencida', 'pendiente']), { label: 'dashboard cuotas pendientes' }),
+        runWithRecovery(() => supabase
+          .from('resoluciones')
+          .select('*', { count: 'exact', head: true })
+          .eq('estado', 'vigente'), { label: 'dashboard resoluciones vigentes' }),
+      ])
 
-      // Socios con deuda
-      const { data: cuotasVencidas } = await supabase
-        .from('cuotas')
-        .select('socio_id, monto_esperado, monto_pagado')
-        .in('estado', ['vencida', 'pendiente'])
+      const sociosActivos = sociosResult.count || 0
+      const cuotasVencidas = cuotasResult.data || []
+      const resolucionesVigentes = resolucionesResult.count || 0
 
       const sociosConDeudaSet = new Set(cuotasVencidas?.map(c => c.socio_id) || [])
       const montoDeudaTotal = cuotasVencidas?.reduce((acc, c) =>
@@ -75,43 +80,42 @@ export default function DashboardPage() {
       // Saldo actual
       let saldoActual = 0
       if (hasPermission('finanzas', 'ver')) {
-        const { data: movimientos } = await supabase
+        const { data: movimientos } = await runWithRecovery(() => supabase
           .from('movimientos')
           .select('tipo, monto')
+          .eq('anulado', false), {
+            label: 'dashboard saldo actual',
+          })
 
         saldoActual = movimientos?.reduce((acc, m) => {
           return m.tipo === 'ingreso' ? acc + m.monto : acc - m.monto
         }, 0) || 0
       }
 
-      // Resoluciones vigentes
-      const { count: resolucionesVigentes } = await supabase
-        .from('resoluciones')
-        .select('*', { count: 'exact', head: true })
-        .eq('estado', 'vigente')
-
       setStats({
-        sociosActivos: sociosActivos || 0,
+        sociosActivos,
         sociosConDeuda: sociosConDeudaSet.size,
         montoDeudaTotal,
         saldoActual,
-        resolucionesVigentes: resolucionesVigentes || 0,
+        resolucionesVigentes,
       })
     } catch (error) {
       console.error('Error fetching dashboard data:', error)
     } finally {
       setLoading(false)
     }
-  }
+  }, [hasPermission])
 
-  const fetchResolucionesRecientes = async () => {
+  const fetchResolucionesRecientes = useCallback(async () => {
     try {
       setLoadingResoluciones(true)
-      const { data } = await supabase
+      const { data } = await runWithRecovery(() => supabase
         .from('resoluciones')
         .select('*')
         .order('created_at', { ascending: false })
-        .limit(3)
+        .limit(3), {
+          label: 'dashboard resoluciones recientes',
+        })
 
       setResoluciones(data || [])
     } catch (error) {
@@ -119,10 +123,20 @@ export default function DashboardPage() {
     } finally {
       setLoadingResoluciones(false)
     }
-  }
+  }, [])
+
+  useEffect(() => {
+    void fetchDashboardData()
+    void fetchResolucionesRecientes()
+  }, [fetchDashboardData, fetchResolucionesRecientes])
+
+  useResumeRefresh(() => {
+    void fetchDashboardData()
+    void fetchResolucionesRecientes()
+  }, { throttleMs: 5_000 })
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-6 overflow-x-hidden">
       {/* Welcome Banner */}
       <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary/10 via-primary/5 to-muted p-6 lg:p-8 border border-border">
         <div className="relative z-10">
@@ -143,7 +157,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Socios Activos */}
         <Card className="bg-card border-border hover:border-primary/30 transition-all hover:shadow-lg hover:shadow-primary/5">
           <CardContent className="p-4 lg:p-6">
@@ -153,7 +167,7 @@ export default function DashboardPage() {
                 {loading ? (
                   <Skeleton className="h-8 w-16 mt-1" />
                 ) : (
-                  <p className="text-2xl font-bold text-foreground mt-1">
+                  <p className="text-xl sm:text-2xl font-bold text-foreground mt-1">
                     {stats.sociosActivos}
                   </p>
                 )}
@@ -175,7 +189,7 @@ export default function DashboardPage() {
                   {loading ? (
                     <Skeleton className="h-8 w-16 mt-1" />
                   ) : (
-                    <p className="text-2xl font-bold text-[#e50051] mt-1">
+                    <p className="text-xl sm:text-2xl font-bold text-[#e50051] mt-1">
                       {stats.sociosConDeuda}
                     </p>
                   )}
@@ -198,7 +212,7 @@ export default function DashboardPage() {
                   {loading ? (
                     <Skeleton className="h-8 w-24 mt-1" />
                   ) : (
-                    <p className="text-2xl font-bold text-foreground mt-1">
+                    <p className="mt-1 text-lg font-bold leading-tight text-foreground break-words sm:text-2xl">
                       {formatARS(stats.saldoActual)}
                     </p>
                   )}
@@ -220,7 +234,7 @@ export default function DashboardPage() {
                 {loading ? (
                   <Skeleton className="h-8 w-16 mt-1" />
                 ) : (
-                  <p className="text-2xl font-bold text-foreground mt-1">
+                  <p className="text-xl sm:text-2xl font-bold text-foreground mt-1">
                     {stats.resolucionesVigentes}
                   </p>
                 )}
@@ -236,7 +250,7 @@ export default function DashboardPage() {
       {/* Latest News and Quick Actions */}
       <div className="grid lg:grid-cols-2 gap-6">
         {/* Últimas novedades */}
-        <Card className="bg-card border-border">
+        <Card className="bg-card border-border overflow-hidden">
           <CardHeader className="pb-4">
             <CardTitle className="text-lg text-foreground flex items-center gap-2">
               <FileText className="w-5 h-5" style={{ color: "#6314a7" }} />
@@ -259,29 +273,29 @@ export default function DashboardPage() {
                 {resoluciones.map((res) => (
                   <Link
                     key={res.id}
-                    href={`/documentos/${res.tipo === 'asamblea' ? 'resoluciones' : 'decretos'}`}
-                    className="block p-3 rounded-lg bg-muted hover:bg-muted/80 transition-colors group"
+                    href={`/documentos?tab=${res.tipo === 'asamblea' ? 'resoluciones' : 'decretos'}`}
+                    className="group block min-w-0 overflow-hidden rounded-lg bg-muted p-3 transition-colors hover:bg-muted/80"
                   >
-                    <div className="flex items-start justify-between gap-2">
+                    <div className="flex min-w-0 items-start justify-between gap-2">
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
+                        <div className="mb-1 flex min-w-0 items-center gap-2">
                           <span className={cn(
-                            'text-xs px-2 py-0.5 rounded-full',
+                            'shrink-0 rounded-full px-2 py-0.5 text-xs',
                             res.tipo === 'asamblea'
                               ? 'bg-primary/10 text-primary'
                               : 'bg-[#00a3e2]/10 text-[#00a3e2]'
                           )}>
                             {res.tipo === 'asamblea' ? 'Resolución' : 'Decreto'}
                           </span>
-                          <span className="text-xs text-muted-foreground">
+                          <span className="truncate text-xs text-muted-foreground">
                             N° {res.numero}/{res.anio}
                           </span>
                         </div>
-                        <p className="text-sm text-foreground font-medium truncate group-hover:text-primary transition-colors">
+                        <p className="w-full truncate text-sm font-medium text-foreground transition-colors group-hover:text-primary">
                           {res.titulo}
                         </p>
                       </div>
-                      <ArrowRight className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors shrink-0" />
+                      <ArrowRight className="hidden h-4 w-4 shrink-0 text-muted-foreground transition-colors group-hover:text-primary sm:block" />
                     </div>
                   </Link>
                 ))}
@@ -291,7 +305,7 @@ export default function DashboardPage() {
         </Card>
 
         {/* Accesos rápidos */}
-        <Card className="bg-card border-border">
+        <Card className="bg-card border-border overflow-hidden">
           <CardHeader className="pb-4">
             <CardTitle className="text-lg text-foreground flex items-center gap-2">
               <TrendingUp className="w-5 h-5" style={{ color: "#6314a7" }} />
@@ -299,16 +313,28 @@ export default function DashboardPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex flex-wrap gap-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <Button
                 variant="outline"
                 size="sm"
                 asChild
-                className="bg-muted border-border text-foreground hover:bg-muted/80"
+                className="w-full min-w-0 justify-start bg-muted border-border text-foreground hover:bg-muted/80"
+              >
+                <Link href="/tareas">
+                  <KanbanSquare className="mr-2 h-4 w-4 shrink-0" />
+                  <span className="truncate">Ir a tareas</span>
+                </Link>
+              </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                asChild
+                className="w-full min-w-0 justify-start bg-muted border-border text-foreground hover:bg-muted/80"
               >
                 <Link href="/socios">
-                  <Users className="w-4 h-4 mr-2" />
-                  Ver socios
+                  <Users className="mr-2 h-4 w-4 shrink-0" />
+                  <span className="truncate">Ver socios</span>
                 </Link>
               </Button>
 
@@ -316,11 +342,11 @@ export default function DashboardPage() {
                 variant="outline"
                 size="sm"
                 asChild
-                className="bg-muted border-border text-foreground hover:bg-muted/80"
+                className="w-full min-w-0 justify-start bg-muted border-border text-foreground hover:bg-muted/80"
               >
                 <Link href="/deudas/mi-cuenta">
-                  <Wallet className="w-4 h-4 mr-2" />
-                  Mi estado de cuenta
+                  <Wallet className="mr-2 h-4 w-4 shrink-0" />
+                  <span className="truncate">Mi estado de cuenta</span>
                 </Link>
               </Button>
 
@@ -328,11 +354,11 @@ export default function DashboardPage() {
                 variant="outline"
                 size="sm"
                 asChild
-                className="bg-muted border-border text-foreground hover:bg-muted/80"
+                className="w-full min-w-0 justify-start bg-muted border-border text-foreground hover:bg-muted/80"
               >
-                <Link href="/documentos/estatuto">
-                  <FileText className="w-4 h-4 mr-2" />
-                  Ver estatuto
+                <Link href="/documentos?tab=estatuto">
+                  <FileText className="mr-2 h-4 w-4 shrink-0" />
+                  <span className="truncate">Ver estatuto</span>
                 </Link>
               </Button>
 
@@ -341,11 +367,11 @@ export default function DashboardPage() {
                   variant="outline"
                   size="sm"
                   asChild
-                  className="bg-muted border-border text-foreground hover:bg-muted/80"
+                  className="w-full min-w-0 justify-start bg-muted border-border text-foreground hover:bg-muted/80"
                 >
                   <Link href="/finanzas">
-                    <TrendingDown className="w-4 h-4 mr-2" />
-                    Registrar egreso
+                    <TrendingDown className="mr-2 h-4 w-4 shrink-0" />
+                    <span className="truncate">Registrar egreso</span>
                   </Link>
                 </Button>
               )}

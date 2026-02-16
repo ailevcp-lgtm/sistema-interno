@@ -98,7 +98,7 @@ export default function SociosPage() {
         {canCreate && (
           <Button
             onClick={() => setShowNewModal(true)}
-            className="bg-primary hover:bg-primary/90 text-primary-foreground border-0"
+            className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-primary-foreground border-0"
           >
             <Plus className="w-4 h-4 mr-2" />
             Nuevo socio
@@ -146,9 +146,9 @@ export default function SociosPage() {
                 className="pl-10"
               />
             </div>
-            <div className="flex gap-4">
+            <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto">
               <Select value={filters.estado} onValueChange={(v) => setEstado(v as EstadoSocio | 'todos')}>
-                <SelectTrigger className="w-[140px]">
+                <SelectTrigger className="w-full sm:w-[140px]">
                   <SelectValue placeholder="Estado" />
                 </SelectTrigger>
                 <SelectContent>
@@ -159,7 +159,7 @@ export default function SociosPage() {
               </Select>
 
               <Select value={filters.rolAile} onValueChange={setRolAile}>
-                <SelectTrigger className="w-[160px]">
+                <SelectTrigger className="w-full sm:w-[160px]">
                   <SelectValue placeholder="Rol" />
                 </SelectTrigger>
                 <SelectContent>
@@ -207,7 +207,7 @@ export default function SociosPage() {
 
       {/* Pagination */}
       {totalPages > 1 && (
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <p className="text-sm text-muted-foreground">
             Mostrando {(filters.page - 1) * 15 + 1} - {Math.min(filters.page * 15, totalSocios)} de {totalSocios}
           </p>
@@ -265,109 +265,110 @@ function SocioRow({
   return (
     <Card className="bg-card border-border hover:border-primary/30 transition-colors group">
       <CardContent className="p-4">
-        <div className="flex items-center gap-4">
-          {/* Avatar */}
-          <Avatar className={`w-12 h-12 bg-gradient-to-br ${avatarColor}`}>
-            <AvatarImage src={socio.avatar_url} />
-            <AvatarFallback className="bg-transparent text-white font-semibold">
-              {getInitials(socio.nombre, socio.apellido)}
-            </AvatarFallback>
-          </Avatar>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="flex min-w-0 flex-1 items-center gap-3 sm:gap-4">
+            <Avatar className={`w-12 h-12 bg-gradient-to-br ${avatarColor}`}>
+              <AvatarImage src={socio.avatar_url} />
+              <AvatarFallback className="bg-transparent text-white font-semibold">
+                {getInitials(socio.nombre, socio.apellido)}
+              </AvatarFallback>
+            </Avatar>
 
-          {/* Info */}
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <Link
-                href={`/socios/${socio.id}`}
-                className="font-medium text-foreground hover:text-primary transition-colors"
-              >
-                {socio.apellido}, {socio.nombre}
-              </Link>
-              {socio.rol_aile && (
-                <Badge
-                  variant="outline"
-                  className="text-[10px] border-primary/30 text-primary bg-primary/10"
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <Link
+                  href={`/socios/${socio.id}`}
+                  className="font-medium text-foreground hover:text-primary transition-colors"
                 >
-                  {socio.rol_aile}
-                </Badge>
-              )}
-            </div>
-            <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground">
-              <span>DNI: {socio.dni}</span>
-              <span>•</span>
-              <span>{socio.email}</span>
-              <span>•</span>
-              <span>Desde {formatDate(socio.fecha_ingreso)}</span>
+                  {socio.apellido}, {socio.nombre}
+                </Link>
+                {socio.rol_aile && (
+                  <Badge
+                    variant="outline"
+                    className="text-[10px] border-primary/30 text-primary bg-primary/10"
+                  >
+                    {socio.rol_aile}
+                  </Badge>
+                )}
+              </div>
+              <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs sm:text-sm text-muted-foreground">
+                <span className="whitespace-nowrap">DNI: {socio.dni}</span>
+                <span className="hidden sm:inline text-muted-foreground/60">•</span>
+                <span className="break-all sm:break-normal">{socio.email}</span>
+                <span className="hidden sm:inline text-muted-foreground/60">•</span>
+                <span className="whitespace-nowrap">Desde {formatDate(socio.fecha_ingreso)}</span>
+              </div>
             </div>
           </div>
 
-          {/* Estado Badge */}
-          <Badge
-            className={`${estadoColors.bg} ${estadoColors.text} border-0 capitalize`}
-          >
-            {socio.estado}
-          </Badge>
-
-          {/* Debt Indicator */}
-          {socio.tiene_deuda && (
-            <Badge
-              variant="outline"
-              className="border-red-500/30 text-red-400 bg-red-500/10"
-            >
-              Con deuda
-            </Badge>
-          )}
-
-          {/* Actions */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-muted-foreground hover:text-foreground hover:bg-muted"
+          <div className="flex items-center justify-between gap-2 sm:justify-end">
+            <div className="flex items-center gap-2">
+              <Badge
+                className={`${estadoColors.bg} ${estadoColors.text} border-0 capitalize`}
               >
-                <MoreVertical className="w-4 h-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem asChild>
-                <Link
-                  href={`/socios/${socio.id}`}
-                  className="cursor-pointer"
+                {socio.estado}
+              </Badge>
+
+              {socio.tiene_deuda && (
+                <Badge
+                  variant="outline"
+                  className="border-red-500/30 text-red-400 bg-red-500/10"
                 >
-                  <Eye className="w-4 h-4 mr-2" />
-                  Ver detalle
-                </Link>
-              </DropdownMenuItem>
-              {canEdit && (
-                <>
-                  <DropdownMenuItem
-                    onClick={() => onDelete(socio.id)}
-                    className="cursor-pointer text-red-600 focus:text-red-700 focus:bg-red-50"
-                  >
-                    <UserX className="w-4 h-4 mr-2" />
-                    Eliminar
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={() => onToggleEstado(socio.id)}
+                  Con deuda
+                </Badge>
+              )}
+            </div>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-muted-foreground hover:text-foreground hover:bg-muted"
+                >
+                  <MoreVertical className="w-4 h-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem asChild>
+                  <Link
+                    href={`/socios/${socio.id}`}
                     className="cursor-pointer"
                   >
-                    {socio.estado === 'activo' ? (
-                      <>
-                        <UserX className="w-4 h-4 mr-2" />
-                        Desactivar
-                      </>
-                    ) : (
-                      <>
-                        <UserCheck className="w-4 h-4 mr-2" />
-                        Activar
-                      </>
-                    )}
-                  </DropdownMenuItem>
-                </>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
+                    <Eye className="w-4 h-4 mr-2" />
+                    Ver detalle
+                  </Link>
+                </DropdownMenuItem>
+                {canEdit && (
+                  <>
+                    <DropdownMenuItem
+                      onClick={() => onDelete(socio.id)}
+                      className="cursor-pointer text-red-600 focus:text-red-700 focus:bg-red-50"
+                    >
+                      <UserX className="w-4 h-4 mr-2" />
+                      Eliminar
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => onToggleEstado(socio.id)}
+                      className="cursor-pointer"
+                    >
+                      {socio.estado === 'activo' ? (
+                        <>
+                          <UserX className="w-4 h-4 mr-2" />
+                          Desactivar
+                        </>
+                      ) : (
+                        <>
+                          <UserCheck className="w-4 h-4 mr-2" />
+                          Activar
+                        </>
+                      )}
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
       </CardContent>
     </Card>
@@ -393,7 +394,7 @@ function StatCard({
             <Icon className="w-5 h-5 text-primary" />
           </div>
           <div>
-            <p className="text-2xl font-semibold text-foreground">{value}</p>
+            <p className="text-xl sm:text-2xl font-semibold text-foreground">{value}</p>
             <p className="text-xs text-muted-foreground">{label}</p>
           </div>
         </div>

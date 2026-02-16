@@ -88,22 +88,22 @@ export function NotificationsPopover() {
                                 return (
                                     <div
                                         key={notif.id}
-                                        className={`flex gap-3 p-4 transition-colors hover:bg-muted/50 ${!notif.leida ? "bg-muted/30" : ""
+                                        className={`group flex min-w-0 gap-3 p-4 transition-colors hover:bg-muted/50 ${!notif.leida ? "bg-muted/30" : ""
                                             }`}
                                     >
                                         <div className={`mt-0.5 ${colorClass}`}>
                                             <Icon className="w-4 h-4" />
                                         </div>
-                                        <div className="flex-1 space-y-1">
+                                        <div className="flex-1 min-w-0 space-y-1">
                                             <div className="flex items-start justify-between gap-2">
-                                                <p className={`text-sm font-medium leading-none ${!notif.leida ? "text-foreground" : "text-muted-foreground"}`}>
+                                                <p className={`min-w-0 break-words text-sm font-medium leading-none ${!notif.leida ? "text-foreground" : "text-muted-foreground"}`}>
                                                     {notif.titulo}
                                                 </p>
                                                 <time className="text-[10px] text-muted-foreground whitespace-nowrap">
                                                     {new Date(notif.created_at).toLocaleDateString()}
                                                 </time>
                                             </div>
-                                            <p className="text-sm text-muted-foreground leading-snug">
+                                            <p className="text-sm text-muted-foreground leading-snug break-words">
                                                 {notif.mensaje}
                                             </p>
                                             <div className="flex items-center gap-2 mt-2">

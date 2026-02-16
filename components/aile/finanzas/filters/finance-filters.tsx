@@ -33,12 +33,12 @@ export function FinanceFilters({
   onClear,
 }: FinanceFiltersProps) {
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2">
       <Select
         value={anio?.toString() || "all"}
         onValueChange={(v) => onAnioChange(v === "all" ? undefined : Number(v))}
       >
-        <SelectTrigger className="w-[130px] h-9 text-sm bg-transparent">
+        <SelectTrigger className="w-full sm:w-[130px] h-9 text-sm bg-transparent">
           <SelectValue placeholder="Año" />
         </SelectTrigger>
         <SelectContent>
@@ -55,7 +55,7 @@ export function FinanceFilters({
         value={categoriaId || "all"}
         onValueChange={(v) => onCategoriaChange(v === "all" ? undefined : v)}
       >
-        <SelectTrigger className="w-[160px] h-9 text-sm bg-transparent">
+        <SelectTrigger className="w-full sm:w-[160px] h-9 text-sm bg-transparent">
           <SelectValue placeholder="Categoría" />
         </SelectTrigger>
         <SelectContent>
@@ -72,7 +72,7 @@ export function FinanceFilters({
         value={eventoId || "all"}
         onValueChange={(v) => onEventoChange(v === "all" ? undefined : v)}
       >
-        <SelectTrigger className="w-[150px] h-9 text-sm bg-transparent">
+        <SelectTrigger className="w-full sm:w-[150px] h-9 text-sm bg-transparent">
           <SelectValue placeholder="Evento" />
         </SelectTrigger>
         <SelectContent>

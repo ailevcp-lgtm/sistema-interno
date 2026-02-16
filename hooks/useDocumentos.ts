@@ -7,6 +7,7 @@ import {
     TipoResolucion,
 } from '@/lib/types'
 import { toast } from 'sonner'
+import { runWithRecovery } from '@/lib/async-recovery'
 
 export function useDocumentos() {
     const [loading, setLoading] = useState(false)
@@ -14,33 +15,35 @@ export function useDocumentos() {
     // -- ESTATUTO --
     // -- ESTATUTO --
     const getEstatuto = useCallback(async () => {
-        setLoading(true)
-        const { data, error } = await supabase
-            .from('estatuto_articulos')
-            .select('*')
-        // Remove DB sorting for 'articulo' since it is text and needs natural sort
-        // We can keep 'capitulo' sorting if we want, but doing full sort in JS is safer now
+        try {
+            setLoading(true)
+            const { data, error } = await runWithRecovery(() => supabase
+                .from('estatuto_articulos')
+                .select('*'), {
+                    label: 'estatuto articulos',
+                })
 
-        setLoading(false)
+            if (error) {
+                throw error
+            }
 
-        if (error) {
+            // Client-side Natural Sort
+            const sortedData = (data as ArticuloEstatuto[]).sort((a, b) => {
+                if (a.capitulo !== b.capitulo) {
+                    return a.capitulo - b.capitulo
+                }
+
+                return a.articulo.localeCompare(b.articulo, undefined, { numeric: true, sensitivity: 'base' })
+            })
+
+            return sortedData
+        } catch (error) {
             console.error('Error fetching estatuto:', error)
             toast.error('Error al cargar el estatuto')
             return []
+        } finally {
+            setLoading(false)
         }
-
-        // Client-side Natural Sort
-        const sortedData = (data as ArticuloEstatuto[]).sort((a, b) => {
-            // Priority 1: Capitulo (Ascending)
-            if (a.capitulo !== b.capitulo) {
-                return a.capitulo - b.capitulo;
-            }
-
-            // Priority 2: Articulo (Natural Sort for "1", "2", "10", "11.1")
-            return a.articulo.localeCompare(b.articulo, undefined, { numeric: true, sensitivity: 'base' });
-        });
-
-        return sortedData
     }, [])
 
     const createArticulo = useCallback(async (data: Omit<ArticuloEstatuto, 'id' | 'updated_at'>) => {
@@ -127,20 +130,27 @@ export function useDocumentos() {
 
     // -- RESOLUCIONES Y DECRETOS --
     const getResoluciones = useCallback(async (tipo: TipoResolucion) => {
-        setLoading(true)
-        const { data, error } = await supabase
-            .from('resoluciones')
-            .select('*')
-            .eq('tipo', tipo)
-            .order('fecha', { ascending: false })
+        try {
+            setLoading(true)
+            const { data, error } = await runWithRecovery(() => supabase
+                .from('resoluciones')
+                .select('*')
+                .eq('tipo', tipo)
+                .order('fecha', { ascending: false }), {
+                    label: `resoluciones ${tipo}`,
+                })
 
-        setLoading(false)
-        if (error) {
+            if (error) {
+                throw error
+            }
+            return data as Resolucion[]
+        } catch (error) {
             console.error('Error fetching resoluciones:', error)
             toast.error('Error al cargar resoluciones')
             return []
+        } finally {
+            setLoading(false)
         }
-        return data as Resolucion[]
     }, [])
 
     const createResolucion = useCallback(async (data: Omit<Resolucion, 'id' | 'created_at'>) => {
@@ -178,19 +188,26 @@ export function useDocumentos() {
 
     // -- BALANCES --
     const getBalances = useCallback(async () => {
-        setLoading(true)
-        const { data, error } = await supabase
-            .from('balances')
-            .select('*')
-            .order('created_at', { ascending: false })
+        try {
+            setLoading(true)
+            const { data, error } = await runWithRecovery(() => supabase
+                .from('balances')
+                .select('*')
+                .order('created_at', { ascending: false }), {
+                    label: 'balances',
+                })
 
-        setLoading(false)
-        if (error) {
+            if (error) {
+                throw error
+            }
+            return data as Balance[]
+        } catch (error) {
             console.error('Error fetching balances:', error)
             toast.error('Error al cargar balances')
             return []
+        } finally {
+            setLoading(false)
         }
-        return data as Balance[]
     }, [])
 
     const createBalance = useCallback(async (data: Omit<Balance, 'id' | 'created_at' | 'saldo'>) => {
@@ -214,16 +231,23 @@ export function useDocumentos() {
 
     // -- CONFIGURACION --
     const getConfig = useCallback(async (key: string) => {
-        const { data, error } = await supabase
-            .from('configuracion_sistema')
-            .select('value')
-            .eq('key', key)
-            .single()
+        try {
+            const { data, error } = await runWithRecovery(() => supabase
+                .from('configuracion_sistema')
+                .select('value')
+                .eq('key', key)
+                .single(), {
+                    label: `configuracion ${key}`,
+                })
 
-        if (error && error.code !== 'PGRST116') { // Ignore not found
+            if (error && error.code !== 'PGRST116') { // Ignore not found
+                console.error('Error fetching config:', error)
+            }
+            return data?.value || null
+        } catch (error) {
             console.error('Error fetching config:', error)
+            return null
         }
-        return data?.value || null
     }, [])
 
     const updateConfig = useCallback(async (key: string, value: string) => {

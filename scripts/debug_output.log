@@ -1,9 +1,0 @@
-STARTING DEBUG LOG
-[2026-02-07T20:42:29.131Z] Querying Supabase...
-[2026-02-07T20:42:29.542Z] Fetched 426 rows
-[2026-02-07T20:42:29.543Z] Found 4 Vasos movements
-[2026-02-07T20:42:29.544Z] TOP 10 VASOS DETAILS:
-[2026-02-07T20:42:29.544Z]   2025-04-15 | $208562.47 | Batch: 75c5717b-fedc-48bc-babf-d63d752c97b6 | ExtID: PBI-230 | Ecovasos
-[2026-02-07T20:42:29.544Z]   2025-11-22 | $135000 | Batch: 75c5717b-fedc-48bc-babf-d63d752c97b6 | ExtID: PBI-349 | Vasos
-[2026-02-07T20:42:29.545Z]   2025-05-17 | $69000 | Batch: 75c5717b-fedc-48bc-babf-d63d752c97b6 | ExtID: PBI-281 | Ingresos - Vasos TFS
-[2026-02-07T20:42:29.545Z]   2025-05-17 | $43500 | Batch: 75c5717b-fedc-48bc-babf-d63d752c97b6 | ExtID: PBI-280 | Ingresos - Vasos EFT

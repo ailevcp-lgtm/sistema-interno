@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Users,
@@ -54,6 +54,8 @@ import { Badge } from '@/components/ui/badge'
 import { toast } from 'sonner'
 
 import { RolesManager } from '@/components/aile/roles-manager'
+import { runWithRecovery } from '@/lib/async-recovery'
+import { useResumeRefresh } from '@/hooks/useResumeRefresh'
 
 export default function ConfiguracionPage() {
   const router = useRouter()
@@ -72,31 +74,31 @@ export default function ConfiguracionPage() {
       </div>
 
       <Tabs defaultValue="roles" className="space-y-4">
-        <TabsList className="bg-muted border border-border">
+        <TabsList className="w-full justify-start bg-muted border border-border overflow-x-auto">
           <TabsTrigger
             value="roles"
-            className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+            className="shrink-0 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
           >
             <Users className="w-4 h-4 mr-2" />
             Roles
           </TabsTrigger>
           <TabsTrigger
             value="cuotas"
-            className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+            className="shrink-0 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
           >
             <Wallet className="w-4 h-4 mr-2" />
             Cuotas
           </TabsTrigger>
           <TabsTrigger
             value="categorias"
-            className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+            className="shrink-0 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
           >
             <Tags className="w-4 h-4 mr-2" />
             Categorías
           </TabsTrigger>
           <TabsTrigger
             value="logs"
-            className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+            className="shrink-0 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
           >
             <Activity className="w-4 h-4 mr-2" />
             Logs
@@ -137,14 +139,10 @@ function RolesTab() {
 
   const { roles: rolesAile, loading: loadingRoles } = useRoles()
 
-  useEffect(() => {
-    fetchUsuarios()
-  }, [])
-
-  const fetchUsuarios = async () => {
+  const fetchUsuarios = useCallback(async () => {
     try {
       setLoading(true)
-      const { data, error } = await supabase
+      const { data, error } = await runWithRecovery(() => supabase
         .from('socios')
         .select(`
           id, 
@@ -156,7 +154,9 @@ function RolesTab() {
           rol_aile,
           rol_aile_definition:rol_aile_definitions(nombre)
         `)
-        .order('apellido')
+        .order('apellido'), {
+          label: 'configuracion usuarios',
+        })
 
       if (error) throw error
       setUsuarios((data || []).map(s => ({
@@ -175,7 +175,12 @@ function RolesTab() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
+
+  useEffect(() => {
+    void fetchUsuarios()
+  }, [fetchUsuarios])
+  useResumeRefresh(() => { void fetchUsuarios() }, { throttleMs: 5_000 })
 
   const handleRoleChange = async () => {
     if (!selectedUser) return
@@ -231,8 +236,8 @@ function RolesTab() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="flex items-center gap-4 mb-4">
-          <div className="relative flex-1 max-w-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-4 mb-4">
+          <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
               placeholder="Buscar usuario..."
@@ -248,60 +253,62 @@ function RolesTab() {
             <Loader2 className="w-6 h-6 animate-spin text-primary" />
           </div>
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow className="border-border hover:bg-transparent">
-                <TableHead className="text-muted-foreground">Usuario</TableHead>
-                <TableHead className="text-muted-foreground">Email</TableHead>
-                <TableHead className="text-muted-foreground">Rol Institucional</TableHead>
-                <TableHead className="text-muted-foreground">Permisos</TableHead>
-                <TableHead className="text-muted-foreground">Acciones</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredUsers.map((usuario) => (
-                <TableRow
-                  key={usuario.id}
-                  className="border-border hover:bg-muted/50"
-                >
-                  <TableCell className="text-foreground">
-                    {usuario.nombre} {usuario.apellido}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">{usuario.email}</TableCell>
-                  <TableCell>
-                    <span className="text-sm font-medium">
-                      {/* @ts-ignore */}
-                      {usuario.rol_aile_nombre}
-                    </span>
-                  </TableCell>
-                  <TableCell>
-                    <Badge className={cn(
-                      ROL_COLORS[usuario.rol].bg,
-                      ROL_COLORS[usuario.rol].text,
-                      'border-0'
-                    )}>
-                      {ROL_LABELS[usuario.rol]}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        setSelectedUser(usuario)
-                        setNewRole(usuario.rol)
-                        // @ts-ignore
-                        setNewRoleAileId(usuario.rol_aile_id || "")
-                        setIsDialogOpen(true)
-                      }}
-                    >
-                      Editar
-                    </Button>
-                  </TableCell>
+          <div className="overflow-x-auto">
+            <Table className="min-w-[760px]">
+              <TableHeader>
+                <TableRow className="border-border hover:bg-transparent">
+                  <TableHead className="text-muted-foreground">Usuario</TableHead>
+                  <TableHead className="text-muted-foreground">Email</TableHead>
+                  <TableHead className="text-muted-foreground">Rol Institucional</TableHead>
+                  <TableHead className="text-muted-foreground">Permisos</TableHead>
+                  <TableHead className="text-muted-foreground">Acciones</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {filteredUsers.map((usuario) => (
+                  <TableRow
+                    key={usuario.id}
+                    className="border-border hover:bg-muted/50"
+                  >
+                    <TableCell className="text-foreground">
+                      {usuario.nombre} {usuario.apellido}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">{usuario.email}</TableCell>
+                    <TableCell>
+                      <span className="text-sm font-medium">
+                        {/* @ts-ignore */}
+                        {usuario.rol_aile_nombre}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <Badge className={cn(
+                        ROL_COLORS[usuario.rol].bg,
+                        ROL_COLORS[usuario.rol].text,
+                        'border-0'
+                      )}>
+                        {ROL_LABELS[usuario.rol]}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setSelectedUser(usuario)
+                          setNewRole(usuario.rol)
+                          // @ts-ignore
+                          setNewRoleAileId(usuario.rol_aile_id || "")
+                          setIsDialogOpen(true)
+                        }}
+                      >
+                        Editar
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         )}
 
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
@@ -339,7 +346,7 @@ function RolesTab() {
 
               <div className="space-y-3">
                 <Label className="text-foreground font-medium">Nivel de Permisos (Sistema)</Label>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {(['socio', 'comision_directiva', 'revisor_cuentas', 'admin'] as Rol[]).map((r) => (
                     <button
                       key={r}
@@ -398,12 +405,15 @@ function CuotasTab() {
   const [loadingConfig, setLoadingConfig] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
 
-  useEffect(() => {
-    const loadConfig = async () => {
-      const { data } = await supabase
+  const loadConfig = useCallback(async () => {
+    try {
+      setLoadingConfig(true)
+      const { data } = await runWithRecovery(() => supabase
         .from('configuracion')
         .select('clave, valor')
-        .in('clave', ['monto_cuota', 'dia_vencimiento'])
+        .in('clave', ['monto_cuota', 'dia_vencimiento']), {
+          label: 'configuracion cuotas',
+        })
 
       if (data) {
         data.forEach(row => {
@@ -411,10 +421,15 @@ function CuotasTab() {
           if (row.clave === 'dia_vencimiento') setDiaVencimiento(Number(row.valor))
         })
       }
+    } finally {
       setLoadingConfig(false)
     }
-    loadConfig()
   }, [])
+
+  useEffect(() => {
+    void loadConfig()
+  }, [loadConfig])
+  useResumeRefresh(() => { void loadConfig() }, { throttleMs: 5_000 })
 
   const handleSave = async () => {
     setIsSaving(true)
@@ -539,17 +554,15 @@ function CategoriasTab() {
   const [newCategoria, setNewCategoria] = useState('')
   const [newTipo, setNewTipo] = useState<'ingreso' | 'egreso'>('egreso')
 
-  useEffect(() => {
-    fetchCategorias()
-  }, [])
-
-  const fetchCategorias = async () => {
+  const fetchCategorias = useCallback(async () => {
     try {
       setLoading(true)
-      const { data, error } = await supabase
+      const { data, error } = await runWithRecovery(() => supabase
         .from('categorias_financieras')
         .select('*')
-        .order('nombre')
+        .order('nombre'), {
+          label: 'configuracion categorias',
+        })
 
       if (error) throw error
       setCategorias(data as CategoriaFinanciera[])
@@ -559,7 +572,12 @@ function CategoriasTab() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
+
+  useEffect(() => {
+    void fetchCategorias()
+  }, [fetchCategorias])
+  useResumeRefresh(() => { void fetchCategorias() }, { throttleMs: 5_000 })
 
   const handleToggleActiva = async (id: string) => {
     const cat = categorias.find(c => c.id === id)
@@ -614,7 +632,7 @@ function CategoriasTab() {
             placeholder="Nueva categoría..."
             value={newCategoria}
             onChange={(e) => setNewCategoria(e.target.value)}
-            className="max-w-xs"
+            className="w-full sm:max-w-xs"
           />
           <select
             value={newTipo}
@@ -694,23 +712,21 @@ function LogsTab() {
   const [loading, setLoading] = useState(true)
   const [page, setPage] = useState(1)
 
-  useEffect(() => {
-    fetchLogs()
-  }, [page])
-
   const pageSize = 20
 
-  const fetchLogs = async () => {
+  const fetchLogs = useCallback(async () => {
     try {
       setLoading(true)
       const from = (page - 1) * pageSize
       const to = from + pageSize - 1
 
-      const { data, error } = await supabase
+      const { data, error } = await runWithRecovery(() => supabase
         .from('logs_actividad')
         .select('*')
         .order('created_at', { ascending: false })
-        .range(from, to)
+        .range(from, to), {
+          label: 'configuracion logs',
+        })
 
       if (error) throw error
       setLogs(data as LogActividad[])
@@ -720,7 +736,12 @@ function LogsTab() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [page])
+
+  useEffect(() => {
+    void fetchLogs()
+  }, [fetchLogs])
+  useResumeRefresh(() => { void fetchLogs() }, { throttleMs: 5_000 })
 
   return (
     <Card className="bg-card border-border">
@@ -736,42 +757,44 @@ function LogsTab() {
             <Loader2 className="w-6 h-6 animate-spin text-primary" />
           </div>
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow className="border-border hover:bg-transparent">
-                <TableHead className="text-muted-foreground">Fecha/Hora</TableHead>
-                <TableHead className="text-muted-foreground">Usuario</TableHead>
-                <TableHead className="text-muted-foreground">Acción</TableHead>
-                <TableHead className="text-muted-foreground">Detalle</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {logs.map((log) => (
-                <TableRow
-                  key={log.id}
-                  className="border-border hover:bg-muted/50"
-                >
-                  <TableCell className="text-muted-foreground text-sm">
-                    {formatDateTime(log.created_at)}
-                  </TableCell>
-                  <TableCell className="text-foreground text-sm">
-                    Usuario #{log.usuario_id}
-                  </TableCell>
-                  <TableCell>
-                    <Badge className="bg-primary/20 text-primary border-0">
-                      {log.accion}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground text-sm">
-                    {log.detalle}
-                  </TableCell>
+          <div className="overflow-x-auto">
+            <Table className="min-w-[780px]">
+              <TableHeader>
+                <TableRow className="border-border hover:bg-transparent">
+                  <TableHead className="text-muted-foreground">Fecha/Hora</TableHead>
+                  <TableHead className="text-muted-foreground">Usuario</TableHead>
+                  <TableHead className="text-muted-foreground">Acción</TableHead>
+                  <TableHead className="text-muted-foreground">Detalle</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {logs.map((log) => (
+                  <TableRow
+                    key={log.id}
+                    className="border-border hover:bg-muted/50"
+                  >
+                    <TableCell className="text-muted-foreground text-sm">
+                      {formatDateTime(log.created_at)}
+                    </TableCell>
+                    <TableCell className="text-foreground text-sm">
+                      Usuario #{log.usuario_id}
+                    </TableCell>
+                    <TableCell>
+                      <Badge className="bg-primary/20 text-primary border-0">
+                        {log.accion}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground text-sm">
+                      {log.detalle}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         )}
 
-        <div className="flex items-center justify-between mt-4">
+        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-muted-foreground">
             Mostrando {logs.length} registros
           </p>

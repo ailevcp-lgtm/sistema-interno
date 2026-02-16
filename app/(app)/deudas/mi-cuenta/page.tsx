@@ -90,7 +90,7 @@ export default function MiCuentaPage() {
       )}
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard
           icon={Wallet}
           label="Deuda total"
@@ -119,17 +119,17 @@ export default function MiCuentaPage() {
 
       {/* Main Content */}
       <Tabs defaultValue="pendientes" className="w-full">
-        <TabsList className="bg-muted border border-border p-1">
+        <TabsList className="w-full justify-start overflow-x-auto bg-muted border border-border p-1">
           <TabsTrigger
             value="pendientes"
-            className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+            className="shrink-0 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
           >
             <AlertCircle className="w-4 h-4 mr-2" />
             Pendientes
           </TabsTrigger>
           <TabsTrigger
             value="historial"
-            className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+            className="shrink-0 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
           >
             <FileText className="w-4 h-4 mr-2" />
             Historial
@@ -209,7 +209,7 @@ export default function MiCuentaPage() {
                     .map((cuota) => (
                       <div
                         key={cuota.id}
-                        className="flex items-center justify-between p-4 rounded-lg bg-muted border border-border"
+                        className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-4 rounded-lg bg-muted border border-border"
                       >
                         <div className="flex items-center gap-4">
                           <div className="p-2 rounded-full bg-green-500/10">
@@ -224,7 +224,7 @@ export default function MiCuentaPage() {
                             </p>
                           </div>
                         </div>
-                        <div className="text-right">
+                        <div className="text-left sm:text-right">
                           <p className="text-green-600 font-medium">
                             {formatARS(cuota.monto_pagado)}
                           </p>

@@ -1,28 +1,38 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-import { useTesoreria } from "@/hooks/useTesoreria"
+import type { CuentaConSaldo } from "@/hooks/useTesoreria"
 import { Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import { supabase } from "@/lib/supabase"
 import { useAuth } from "@/hooks/useAuth"
+import type { CategoriaFinanciera } from "@/lib/types"
+import { invalidateFinancialReferenceData } from "@/lib/finance-source"
 
 interface NuevaTransaccionModalProps {
     isOpen: boolean
     onClose: () => void
     onSuccess: () => void
     initialType?: "ingreso" | "egreso"
+    cuentas: CuentaConSaldo[]
+    categorias: CategoriaFinanciera[]
 }
 
-export function NuevaTransaccionModal({ isOpen, onClose, onSuccess, initialType = "ingreso" }: NuevaTransaccionModalProps) {
+export function NuevaTransaccionModal({
+    isOpen,
+    onClose,
+    onSuccess,
+    initialType = "ingreso",
+    cuentas,
+    categorias,
+}: NuevaTransaccionModalProps) {
     const { user } = useAuth()
-    const { cuentas, categorias, refreshData } = useTesoreria()
     const [loading, setLoading] = useState(false)
 
     const [tipo, setTipo] = useState<"ingreso" | "egreso">(initialType)
@@ -33,6 +43,11 @@ export function NuevaTransaccionModal({ isOpen, onClose, onSuccess, initialType 
     const [fecha, setFecha] = useState(new Date().toISOString().split("T")[0])
 
     const categoriasFiltradas = categorias.filter(c => c.tipo === tipo)
+
+    useEffect(() => {
+        if (!isOpen) return
+        setTipo(initialType)
+    }, [isOpen, initialType])
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
@@ -53,6 +68,8 @@ export function NuevaTransaccionModal({ isOpen, onClose, onSuccess, initialType 
 
             if (error) throw error
 
+            invalidateFinancialReferenceData()
+
             await supabase.from("logs_actividad").insert([{
                 usuario_id: user.id,
                 accion: "CREAR_MOVIMIENTO",
@@ -60,7 +77,6 @@ export function NuevaTransaccionModal({ isOpen, onClose, onSuccess, initialType 
             }])
 
             toast.success("Transacción registrada correctamente")
-            refreshData()
             onSuccess()
             onClose()
 
@@ -84,7 +100,7 @@ export function NuevaTransaccionModal({ isOpen, onClose, onSuccess, initialType 
                 </DialogHeader>
 
                 <form onSubmit={handleSubmit} className="space-y-4 py-2">
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div className="space-y-2">
                             <Label>Tipo</Label>
                             <Select value={tipo} onValueChange={(v: "ingreso" | "egreso") => setTipo(v)}>

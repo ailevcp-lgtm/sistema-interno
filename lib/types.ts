@@ -21,12 +21,22 @@ export type TipoResolucion = 'asamblea' | 'decreto'
 export type EstadoResolucion = 'vigente' | 'derogada'
 export type EstadoBalance = 'borrador' | 'aprobado_cd' | 'aprobado_asamblea'
 export type TipoBalance = 'mensual' | 'trimestral' | 'anual'
+export type ReintegroEstado =
+  | 'borrador'
+  | 'pendiente_aprobacion'
+  | 'observada'
+  | 'aprobada_pendiente_pago'
+  | 'rechazada'
+  | 'pagada'
+  | 'cancelada'
 
 export type RolAile =
   | 'Presidente'
   | 'Vicepresidente'
   | 'Secretario General'
+  | 'Director de Finanzas'
   | 'Tesorero'
+  | 'Revisor de Cuentas'
   | 'Vocal Titular'
   | 'Vocal Suplente'
   | 'Revisor de Cuentas Titular'
@@ -63,6 +73,151 @@ export interface Socio {
   rol_aile_definicion?: RolAileDefinition
   created_at: string
   tiene_deuda?: boolean
+}
+
+export type CalendarioAlcanceReunion = 'personalizada' | 'comision_directiva' | 'general'
+export type CalendarioParticipacionReunion = 'invitado' | 'involucrado'
+
+export interface SocioCalendario {
+  id: string
+  usuario_id: string
+  nombre: string
+  apellido: string
+  email?: string | null
+  rol: Rol
+  rol_aile?: string | null
+}
+
+export interface ReunionCalendarioParticipante {
+  id: string
+  reunion_id: string
+  usuario_id: string
+  socio_id: string
+  participacion: CalendarioParticipacionReunion
+  created_at: string
+  socio?: SocioCalendario
+}
+
+export interface ReunionCalendario {
+  id: string
+  titulo: string
+  descripcion?: string | null
+  lugar?: string | null
+  fecha_inicio: string
+  fecha_fin: string
+  alcance: CalendarioAlcanceReunion
+  created_by: string
+  created_at: string
+  updated_at: string
+  participantes?: ReunionCalendarioParticipante[]
+}
+
+export type TipoProyectoTarea = 'institucional' | 'interno_direccion'
+export type DireccionBase = 'CEA' | 'Finanzas' | 'Recursos Humanos' | 'Comunicación'
+export type EstadoProyectoTarea =
+  | 'borrador'
+  | 'en_ejecucion'
+  | 'enviado_cd'
+  | 'aprobado_cd'
+  | 'archivado'
+export type EstadoTareaKanban = 'pendiente' | 'en_progreso' | 'en_revision' | 'completada'
+export type EstadoTareaWorkflow =
+  | 'backlog'
+  | 'por_hacer'
+  | 'en_progreso'
+  | 'en_revision_direccion'
+  | 'pendiente_handoff'
+  | 'pendiente_aprobacion_cd'
+  | 'observada_cd'
+  | 'aprobada_cd'
+  | 'cerrada'
+
+export interface ProyectoTarea {
+  id: string
+  nombre: string
+  descripcion?: string | null
+  tipo: TipoProyectoTarea
+  orden?: number | null
+  direccion_id?: string | null
+  direccion?: DireccionBase | null
+  estado: EstadoProyectoTarea
+  activo?: boolean
+  fecha_cierre?: string | null
+  responsable_socio_id?: string | null
+  created_by?: string | null
+  updated_by?: string | null
+  created_at: string
+  updated_at?: string | null
+}
+
+export interface TareaProyecto {
+  id: string
+  proyecto_id: string
+  titulo: string
+  descripcion?: string | null
+  estado: EstadoTareaKanban
+  estado_backend?: EstadoTareaWorkflow
+  prioridad?: 'baja' | 'media' | 'alta' | 'critica' | null
+  orden?: number | null
+  fecha_limite?: string | null
+  direccion_responsable_id?: string | null
+  direccion_responsable?: DireccionBase | null
+  asignado_usuario_id?: string | null
+  asignado_socio_id?: string | null
+  created_by?: string | null
+  updated_by?: string | null
+  created_at: string
+  updated_at?: string | null
+}
+
+export interface SubtareaProyecto {
+  id: string
+  tarea_id: string
+  titulo: string
+  descripcion?: string | null
+  estado: EstadoTareaKanban
+  estado_backend?: EstadoTareaWorkflow
+  orden?: number | null
+  asignado_usuario_id?: string | null
+  asignado_socio_id?: string | null
+  created_by?: string | null
+  updated_by?: string | null
+  created_at: string
+  updated_at?: string | null
+}
+
+export interface UsuarioAsignableTarea {
+  socio_id: string
+  usuario_id: string
+  nombre: string
+  apellido: string
+  email?: string | null
+  rol: Rol
+  rol_aile?: string | null
+}
+
+export interface TareaAprobacionCD {
+  id: string
+  tarea_id: string
+  socio_id: string
+  decision: 'pendiente' | 'aprobada' | 'observada' | 'rechazada'
+  observacion?: string | null
+  aprobado_at?: string | null
+  metadata?: Record<string, unknown>
+  created_at: string
+  updated_at?: string | null
+}
+
+export interface AccesoProyectoTarea {
+  canManage: boolean
+  canCreate: boolean
+  canAssign: boolean
+  canHandoff: boolean
+  canDelete: boolean
+  canSubmitCd: boolean
+  canApproveCd: boolean
+  canEditAssigned: boolean
+  readOnly: boolean
 }
 
 export interface Cuota {
@@ -103,6 +258,73 @@ export interface Movimiento {
   // Relaciones
   categoria?: CategoriaFinanciera
   registradoPor?: Usuario
+}
+
+export interface SolicitudReintegro {
+  id: string
+  numero: string
+  solicitante_socio_id: string
+  tesorero_socio_id?: string | null
+  estado: ReintegroEstado
+  fecha_gasto: string
+  fecha_solicitud?: string | null
+  fecha_aprobacion?: string | null
+  fecha_pago?: string | null
+  categoria_id?: string | null
+  cuenta_pago_id?: string | null
+  monto_solicitado: number
+  monto_aprobado?: number | null
+  moneda: string
+  descripcion: string
+  factura_url: string
+  factura_numero?: string | null
+  factura_emisor?: string | null
+  motivo_rechazo?: string | null
+  motivo_observacion?: string | null
+  comprobante_pago_url?: string | null
+  movimiento_id?: string | null
+  created_at: string
+  updated_at: string
+  created_by?: string | null
+  updated_by?: string | null
+  solicitante?: Socio
+  tesorero?: Socio
+  categoria?: CategoriaFinanciera
+  cuenta_pago?: Cuenta
+}
+
+export interface SolicitudReintegroHistorial {
+  id: string
+  solicitud_id: string
+  accion: string
+  estado_anterior?: ReintegroEstado | null
+  estado_nuevo?: ReintegroEstado | null
+  comentario?: string | null
+  metadata: Record<string, unknown>
+  actor_user_id: string
+  actor_socio_id?: string | null
+  created_at: string
+  actor_socio?: Socio
+}
+
+export interface CrearSolicitudReintegroPayload {
+  fecha_gasto: string
+  categoria_id?: string
+  monto_solicitado: number
+  moneda?: string
+  descripcion: string
+  factura_url: string
+  factura_numero?: string
+  factura_emisor?: string
+  tesorero_socio_id?: string
+  solicitante_socio_id?: string
+}
+
+export interface RegistrarPagoReintegroPayload {
+  solicitud_id: string
+  cuenta_pago_id: string
+  fecha_pago: string
+  comprobante_pago_url: string
 }
 
 export interface Resolucion {
@@ -156,45 +378,6 @@ export interface LogActividad {
   created_at: string
   // Relaciones
   usuario?: Usuario
-}
-
-// Tipos para el módulo de Documentos
-export interface ArticuloEstatuto {
-  id: string
-  capitulo: number
-  articulo: number
-  titulo: string
-  contenido: string // Markdown
-  archivo_url?: string // PDF URL for specific article or full statute link
-  updated_at: string
-  editado_por?: string
-}
-
-export interface Resolucion {
-  id: string
-  tipo: TipoResolucion
-  numero: number
-  anio: number
-  fecha: string
-  titulo: string
-  contenido: string // Markdown/HTML
-  estado: EstadoResolucion
-  archivo_url?: string // PDF URL
-  creado_por: string
-  created_at: string
-}
-
-export interface Balance {
-  id: string
-  periodo: string
-  tipo: TipoBalance
-  total_ingresos: number
-  total_egresos: number
-  saldo: number
-  estado: EstadoBalance
-  archivo_url?: string // PDF URL
-  aprobado_por?: string
-  created_at: string
 }
 
 // Tipos para navegación y UI

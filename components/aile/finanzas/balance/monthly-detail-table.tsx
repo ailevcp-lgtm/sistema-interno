@@ -58,7 +58,7 @@ export function MonthlyDetailTable({ data }: Props) {
       </CardHeader>
       <CardContent className="p-0">
         <div className="overflow-x-auto">
-          <table className="w-full">
+          <table className="w-full min-w-[620px]">
             <thead>
               <tr className="border-b border-border bg-muted/30">
                 {headers.map((h) => (

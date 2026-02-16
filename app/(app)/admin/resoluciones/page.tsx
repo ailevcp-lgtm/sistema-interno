@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useDocumentos } from "@/hooks/useDocumentos"
 import { ResolutionEditor } from "@/components/aile/resolution-editor"
 import { Button } from "@/components/ui/button"
@@ -17,6 +17,7 @@ import { formatDate } from "@/lib/utils"
 import { Plus, Pencil, Trash2, ArrowLeft } from "lucide-react"
 import { toast } from "sonner"
 import type { Resolucion, TipoResolucion } from "@/lib/types"
+import { useResumeRefresh } from "@/hooks/useResumeRefresh"
 
 export default function AdminResolucionesPage() {
     const [mode, setMode] = useState<"list" | "edit" | "create">("list")
@@ -25,7 +26,7 @@ export default function AdminResolucionesPage() {
     const { getResoluciones, createResolucion, updateResolucion } = useDocumentos()
     const [loading, setLoading] = useState(true)
 
-    const loadResoluciones = async () => {
+    const loadResoluciones = useCallback(async () => {
         setLoading(true)
         try {
             // Fetch both types
@@ -40,11 +41,13 @@ export default function AdminResolucionesPage() {
         } finally {
             setLoading(false)
         }
-    }
+    }, [getResoluciones])
 
     useEffect(() => {
-        loadResoluciones()
-    }, [])
+        void loadResoluciones()
+    }, [loadResoluciones])
+
+    useResumeRefresh(() => { void loadResoluciones() }, { throttleMs: 5_000 })
 
     const handleEdit = (res: Resolucion) => {
         setSelectedRes(res)

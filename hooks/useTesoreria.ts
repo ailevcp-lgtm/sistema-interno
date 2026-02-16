@@ -5,9 +5,11 @@ import { toast } from 'sonner'
 import type {
     Cuenta,
     MovimientoExtended,
-    FinanceFilters,
     CategoriaFinanciera
 } from '@/lib/types'
+import { getFinancialReferenceData } from '@/lib/finance-source'
+import { runWithRecovery } from '@/lib/async-recovery'
+import { useResumeRefresh } from '@/hooks/useResumeRefresh'
 
 export interface CuentaConSaldo extends Cuenta {
     saldo: number
@@ -23,36 +25,54 @@ export function useTesoreria() {
     const fetchData = useCallback(async () => {
         setLoading(true)
         try {
-            // 1. Fetch cuentas
-            const { data: cuentasData, error: cuentasError } = await supabase
-                .from('cuentas')
-                .select('*')
-                .eq('activa', true)
-                .order('nombre')
+            const [referenceData, movsResult, recentResult] = await Promise.all([
+                runWithRecovery(
+                    () => getFinancialReferenceData(),
+                    { label: 'tesoreria references', timeoutMs: 8_000, retries: 1 }
+                ),
+                runWithRecovery(() => supabase
+                    .from('movimientos')
+                    .select('id, tipo, monto, cuenta_id')
+                    .eq('anulado', false), { label: 'tesoreria movimientos', timeoutMs: 8_000, retries: 1 }),
+                runWithRecovery(() => supabase
+                    .from('movimientos')
+                    .select(`
+          id,
+          tipo,
+          categoria_id,
+          monto,
+          fecha,
+          descripcion,
+          comprobante_url,
+          registrado_por,
+          periodo,
+          created_at,
+          evento_id,
+          subcategoria_id,
+          cuenta_id,
+          voluntario_nombre,
+          moneda,
+          import_batch_id,
+          external_id,
+          row_hash,
+          socio_id,
+          anulado,
+          anulado_at,
+          anulado_por,
+          anulado_motivo
+        `)
+                    .eq('anulado', false)
+                    .order('fecha', { ascending: false })
+                    .limit(50), { label: 'tesoreria movimientos recientes', timeoutMs: 8_000, retries: 1 }),
+            ])
 
-            if (cuentasError) throw cuentasError
+            if (movsResult.error) throw movsResult.error
+            if (recentResult.error) throw recentResult.error
 
-            // Fetch categorias
-            const { data: catData, error: catError } = await supabase
-                .from('categorias_financieras')
-                .select('*')
-                .eq('activa', true)
-                .order('nombre')
+            setCategorias(referenceData.categorias)
 
-            if (catError) throw catError
-            setCategorias(catData)
-
-            // 2. Fetch all movements to calculate balances
-            // TODO: In the future, we might want to paginate or use database views for balances
-            const { data: movsData, error: movsError } = await supabase
-                .from('movimientos')
-                .select('id, tipo, monto, cuenta_id')
-
-            if (movsError) throw movsError
-
-            // Calculate balances
             const balances: Record<string, number> = {}
-            movsData?.forEach(m => {
+            movsResult.data?.forEach(m => {
                 if (!m.cuenta_id) return
                 const monto = Number(m.monto)
                 if (!balances[m.cuenta_id]) balances[m.cuenta_id] = 0
@@ -64,28 +84,30 @@ export function useTesoreria() {
                 }
             })
 
-            const cuentasConSaldo = cuentasData.map(c => ({
+            const cuentasConSaldo = referenceData.cuentas.map(c => ({
                 ...c,
                 saldo: balances[c.id] || 0
             }))
 
+            const categoriasById = new Map(
+                referenceData.categorias.map((categoria) => [categoria.id, categoria])
+            )
+            const eventosById = new Map(
+                referenceData.eventos.map((evento) => [evento.id, evento])
+            )
+            const cuentasById = new Map(
+                referenceData.cuentas.map((cuenta) => [cuenta.id, cuenta])
+            )
+
+            const recentMovimientos = ((recentResult.data || []) as MovimientoExtended[]).map((movimiento) => ({
+                ...movimiento,
+                categoria: movimiento.categoria_id ? categoriasById.get(movimiento.categoria_id) : undefined,
+                evento: movimiento.evento_id ? eventosById.get(movimiento.evento_id) : undefined,
+                cuenta: movimiento.cuenta_id ? cuentasById.get(movimiento.cuenta_id) : undefined,
+            }))
+
             setCuentas(cuentasConSaldo)
-
-            // 3. Fetch recent movements for the list
-            const { data: recentMovs, error: recentError } = await supabase
-                .from('movimientos')
-                .select(`
-          *,
-          categoria:categorias_financieras(id, nombre, tipo),
-          evento:eventos(id, nombre),
-          cuenta:cuentas(id, nombre)
-        `)
-                .order('fecha', { ascending: false })
-                .limit(50)
-
-            if (recentError) throw recentError
-
-            setMovimientos(recentMovs as MovimientoExtended[])
+            setMovimientos(recentMovimientos)
 
         } catch (error) {
             console.error('Error fetching treasury data:', error)
@@ -96,8 +118,9 @@ export function useTesoreria() {
     }, [])
 
     useEffect(() => {
-        fetchData()
+        void fetchData()
     }, [fetchData])
+    useResumeRefresh(() => { void fetchData() }, { throttleMs: 5_000 })
 
     const registrarArqueo = async (cuentaId: string, saldoReal: number, observaciones: string) => {
         if (!user) return

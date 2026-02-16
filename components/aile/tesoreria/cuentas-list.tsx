@@ -67,10 +67,10 @@ export function CuentasList({ cuentas, loading, onArqueo }: CuentasListProps) {
                     </CardHeader>
                     <CardContent>
                         <div className="flex flex-col gap-1">
-                            <span className="text-xl font-bold truncate" title={cuenta.nombre}>
+                            <span className="text-lg sm:text-xl font-bold truncate" title={cuenta.nombre}>
                                 {cuenta.nombre}
                             </span>
-                            <div className="text-2xl font-bold font-mono text-[#6314a7] mt-2">
+                            <div className="text-xl sm:text-2xl font-bold font-mono text-[#6314a7] mt-2 break-words">
                                 {new Intl.NumberFormat("es-AR", {
                                     style: "currency",
                                     currency: "ARS",
@@ -82,7 +82,7 @@ export function CuentasList({ cuentas, loading, onArqueo }: CuentasListProps) {
                             <Button
                                 variant="outline"
                                 size="sm"
-                                className="gap-2 text-xs"
+                                className="w-full sm:w-auto gap-2 text-xs"
                                 onClick={() => onArqueo(cuenta)}
                             >
                                 <RefreshCw className="w-3.5 h-3.5" />

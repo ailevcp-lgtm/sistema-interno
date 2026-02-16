@@ -72,7 +72,7 @@ export function RolesManager() {
 
     return (
         <div className="space-y-4">
-            <div className="flex justify-between items-center">
+            <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center">
                 <div>
                     <h3 className="text-lg font-medium">Roles de AILE</h3>
                     <p className="text-sm text-muted-foreground">
@@ -81,7 +81,7 @@ export function RolesManager() {
                 </div>
                 <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
                     <DialogTrigger asChild>
-                        <Button>
+                        <Button className="w-full sm:w-auto">
                             <Plus className="mr-2 h-4 w-4" />
                             Nuevo Rol
                         </Button>
@@ -111,8 +111,8 @@ export function RolesManager() {
                 </Dialog>
             </div>
 
-            <div className="rounded-md border">
-                <Table>
+            <div className="rounded-md border overflow-x-auto">
+                <Table className="min-w-[420px]">
                     <TableHeader>
                         <TableRow>
                             <TableHead>Nombre del Rol</TableHead>

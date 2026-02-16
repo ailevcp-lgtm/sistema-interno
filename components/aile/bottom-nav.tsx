@@ -2,16 +2,23 @@
 
 import {
   LayoutGrid,
+  CalendarDays,
+  KanbanSquare,
   Users,
   BarChart2,
   FileText,
+  ArrowUpDown,
   MoreHorizontal,
   CreditCard,
   Settings,
+  Landmark,
+  ReceiptText,
   X,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useState } from "react"
+import { useAuth } from "@/hooks/useAuth"
+import { canAccessReintegrosModule } from "@/lib/constants"
 
 const mainNavItems = [
   { id: "dashboard", label: "Inicio", icon: LayoutGrid },
@@ -21,7 +28,12 @@ const mainNavItems = [
 ]
 
 const moreItems = [
+  { id: "calendario", label: "Calendario", icon: CalendarDays },
+  { id: "tareas", label: "Tareas", icon: KanbanSquare },
   { id: "deudas", label: "Deudas", icon: CreditCard },
+  { id: "movimientos", label: "Movimientos", icon: ArrowUpDown },
+  { id: "tesoreria", label: "Tesorería", icon: Landmark },
+  { id: "reintegros", label: "Reintegros", icon: ReceiptText, requiresReintegrosAccess: true },
   { id: "configuracion", label: "Ajustes", icon: Settings },
 ]
 
@@ -32,6 +44,11 @@ interface BottomNavProps {
 
 export function BottomNav({ currentPage, onNavigate }: BottomNavProps) {
   const [showMore, setShowMore] = useState(false)
+  const { rol, rolAile } = useAuth()
+  const canAccessReintegros = canAccessReintegrosModule(rol, rolAile)
+  const visibleMoreItems = moreItems.filter((item) =>
+    item.requiresReintegrosAccess ? canAccessReintegros : true
+  )
 
   return (
     <>
@@ -39,7 +56,7 @@ export function BottomNav({ currentPage, onNavigate }: BottomNavProps) {
         <div className="fixed inset-0 z-50 lg:hidden" onClick={() => setShowMore(false)}>
           <div className="absolute inset-0 bg-foreground/20 backdrop-blur-sm" />
           <div
-            className="absolute bottom-[72px] left-3 right-3 bg-card rounded-xl p-3 border border-border shadow-lg"
+            className="absolute bottom-[calc(72px+env(safe-area-inset-bottom))] left-3 right-3 max-h-[60vh] overflow-y-auto bg-card rounded-xl p-3 border border-border shadow-lg"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-2 px-1">
@@ -49,7 +66,7 @@ export function BottomNav({ currentPage, onNavigate }: BottomNavProps) {
               </button>
             </div>
             <div className="flex flex-col gap-0.5">
-              {moreItems.map((item) => (
+              {visibleMoreItems.map((item) => (
                 <button
                   key={item.id}
                   onClick={() => {
@@ -72,8 +89,11 @@ export function BottomNav({ currentPage, onNavigate }: BottomNavProps) {
         </div>
       )}
 
-      <nav className="fixed bottom-0 left-0 right-0 z-40 lg:hidden bg-card border-t border-border">
-        <div className="flex items-center justify-around h-16 px-1">
+      <nav
+        className="fixed bottom-0 left-0 right-0 z-40 lg:hidden bg-card border-t border-border"
+        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+      >
+        <div className="grid h-16 grid-cols-5 items-center px-1">
           {mainNavItems.map((item) => {
             const isActive = currentPage === item.id
             return (
@@ -81,7 +101,7 @@ export function BottomNav({ currentPage, onNavigate }: BottomNavProps) {
                 key={item.id}
                 onClick={() => onNavigate(item.id)}
                 className={cn(
-                  "flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg transition-colors",
+                  "flex w-full min-w-0 flex-col items-center gap-0.5 px-1.5 py-1.5 rounded-lg transition-colors",
                   isActive ? "text-primary" : "text-muted-foreground"
                 )}
               >
@@ -95,8 +115,8 @@ export function BottomNav({ currentPage, onNavigate }: BottomNavProps) {
           <button
             onClick={() => setShowMore(!showMore)}
             className={cn(
-              "flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg transition-colors",
-              moreItems.some((i) => i.id === currentPage) ? "text-primary" : "text-muted-foreground"
+              "flex w-full min-w-0 flex-col items-center gap-0.5 px-1.5 py-1.5 rounded-lg transition-colors",
+              visibleMoreItems.some((i) => i.id === currentPage) ? "text-primary" : "text-muted-foreground"
             )}
           >
             <MoreHorizontal className="w-5 h-5" strokeWidth={1.8} />

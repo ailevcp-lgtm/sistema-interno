@@ -296,14 +296,14 @@ export default function DeudasPage() {
             {totalCuotas} cuotas registradas
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
           {isAdmin && (
-            <Button variant="outline" onClick={openPromosManagement}>
+            <Button variant="outline" onClick={openPromosManagement} className="w-full sm:w-auto">
               <Tag className="w-4 h-4 mr-2" />
               Promociones
             </Button>
           )}
-          <Button variant="outline" onClick={exportCSV}>
+          <Button variant="outline" onClick={exportCSV} className="w-full sm:w-auto">
             <Download className="w-4 h-4 mr-2" />
             Exportar
           </Button>
@@ -342,9 +342,9 @@ export default function DeudasPage() {
                 className="pl-10"
               />
             </div>
-            <div className="flex gap-4">
+            <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto">
               <Select value={filters.periodo} onValueChange={setPeriodo}>
-                <SelectTrigger className="w-[160px]">
+                <SelectTrigger className="w-full sm:w-[160px]">
                   <SelectValue placeholder="Período" />
                 </SelectTrigger>
                 <SelectContent>
@@ -356,7 +356,7 @@ export default function DeudasPage() {
               </Select>
 
               <Select value={filters.estado} onValueChange={(v) => setEstado(v as EstadoCuota | 'todos')}>
-                <SelectTrigger className="w-[140px]">
+                <SelectTrigger className="w-full sm:w-[140px]">
                   <SelectValue placeholder="Estado" />
                 </SelectTrigger>
                 <SelectContent>
@@ -375,7 +375,7 @@ export default function DeudasPage() {
       {/* Table */}
       <Card className="bg-card border-border overflow-hidden">
         <div className="overflow-x-auto">
-          <Table>
+          <Table className="min-w-[920px]">
             <TableHeader>
               <TableRow className="border-border hover:bg-transparent">
                 <TableHead className="text-muted-foreground">Socio</TableHead>
@@ -412,7 +412,7 @@ export default function DeudasPage() {
 
       {/* Pagination */}
       {totalPages > 1 && (
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <p className="text-sm text-muted-foreground">
             Mostrando {(filters.page - 1) * 20 + 1} - {Math.min(filters.page * 20, totalCuotas)} de {totalCuotas}
           </p>
@@ -650,45 +650,47 @@ export default function DeudasPage() {
             {allPromos.length === 0 ? (
               <p className="text-center text-muted-foreground py-8">No hay promociones creadas</p>
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Nombre</TableHead>
-                    <TableHead>Tipo</TableHead>
-                    <TableHead>Valor</TableHead>
-                    <TableHead>Meses</TableHead>
-                    <TableHead>Estado</TableHead>
-                    <TableHead className="text-right">Acciones</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {allPromos.map(p => (
-                    <TableRow key={p.id}>
-                      <TableCell className="font-medium">{p.nombre}</TableCell>
-                      <TableCell>{p.tipo === 'percent' ? 'Porcentaje' : 'Fijo'}</TableCell>
-                      <TableCell>{p.tipo === 'percent' ? `${p.valor}%` : formatARS(p.valor)}</TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {p.meses_min || '-'} - {p.meses_max || '-'}
-                      </TableCell>
-                      <TableCell>
-                        <Badge className={p.activa ? 'bg-green-500/20 text-green-500 border-0' : 'bg-gray-500/20 text-gray-400 border-0'}>
-                          {p.activa ? 'Activa' : 'Inactiva'}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-1">
-                          <Button variant="ghost" size="sm" onClick={() => openPromoForm(p)}>
-                            <Pencil className="w-3.5 h-3.5" />
-                          </Button>
-                          <Button variant="ghost" size="sm" onClick={() => handleDeletePromo(p.id)}>
-                            <Trash2 className="w-3.5 h-3.5 text-red-500" />
-                          </Button>
-                        </div>
-                      </TableCell>
+              <div className="overflow-x-auto">
+                <Table className="min-w-[760px]">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Nombre</TableHead>
+                      <TableHead>Tipo</TableHead>
+                      <TableHead>Valor</TableHead>
+                      <TableHead>Meses</TableHead>
+                      <TableHead>Estado</TableHead>
+                      <TableHead className="text-right">Acciones</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {allPromos.map(p => (
+                      <TableRow key={p.id}>
+                        <TableCell className="font-medium">{p.nombre}</TableCell>
+                        <TableCell>{p.tipo === 'percent' ? 'Porcentaje' : 'Fijo'}</TableCell>
+                        <TableCell>{p.tipo === 'percent' ? `${p.valor}%` : formatARS(p.valor)}</TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {p.meses_min || '-'} - {p.meses_max || '-'}
+                        </TableCell>
+                        <TableCell>
+                          <Badge className={p.activa ? 'bg-green-500/20 text-green-500 border-0' : 'bg-gray-500/20 text-gray-400 border-0'}>
+                            {p.activa ? 'Activa' : 'Inactiva'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-1">
+                            <Button variant="ghost" size="sm" onClick={() => openPromoForm(p)}>
+                              <Pencil className="w-3.5 h-3.5" />
+                            </Button>
+                            <Button variant="ghost" size="sm" onClick={() => handleDeletePromo(p.id)}>
+                              <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
             )}
           </div>
         </DialogContent>
@@ -709,7 +711,7 @@ export default function DeudasPage() {
               <Label>Descripción (opcional)</Label>
               <Input value={promoForm.descripcion} onChange={e => setPromoForm({ ...promoForm, descripcion: e.target.value })} />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Tipo</Label>
                 <Select value={promoForm.tipo} onValueChange={v => setPromoForm({ ...promoForm, tipo: v as 'percent' | 'fixed' })}>
@@ -725,7 +727,7 @@ export default function DeudasPage() {
                 <Input type="number" value={promoForm.valor} onChange={e => setPromoForm({ ...promoForm, valor: e.target.value })} placeholder={promoForm.tipo === 'percent' ? '10' : '5000'} />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Meses mínimo (opcional)</Label>
                 <Input type="number" value={promoForm.meses_min} onChange={e => setPromoForm({ ...promoForm, meses_min: e.target.value })} placeholder="3" />
@@ -893,7 +895,7 @@ function StatCard({
             <Icon className={`w-5 h-5 ${color}`} />
           </div>
           <div>
-            <p className={`text-lg font-semibold ${color}`}>{value}</p>
+            <p className={`text-base sm:text-lg font-semibold ${color}`}>{value}</p>
             <p className="text-xs text-muted-foreground">{label}</p>
           </div>
         </div>

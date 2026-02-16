@@ -1,24 +1,37 @@
 "use client"
 
-import { Search, Download, ChevronDown, ChevronRight, BookOpen, Scale, Gavel, BarChart2, Plus, FileText, Upload, Settings } from "lucide-react"
+import { Download, ChevronDown, ChevronRight, BookOpen, Scale, Gavel, BarChart2, Plus, FileText, Upload, Settings, Eye } from "lucide-react"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { cn } from "@/lib/utils"
 import { useDocumentos } from "@/hooks/useDocumentos"
 import { formatDate } from "@/lib/utils"
 import type { ArticuloEstatuto, Resolucion, Balance } from "@/lib/types"
 import Link from "next/link"
+import { useSearchParams } from "next/navigation"
 import { useAuth } from "@/hooks/useAuth"
+import { useResumeRefresh } from "@/hooks/useResumeRefresh"
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 
 type DocTab = "estatuto" | "resoluciones" | "decretos" | "balances"
+
+function isDocTab(value: string | null): value is DocTab {
+  return value === "estatuto" || value === "resoluciones" || value === "decretos" || value === "balances"
+}
 
 const tabs: { id: DocTab; label: string; icon: typeof BookOpen }[] = [
   { id: "estatuto", label: "Estatuto", icon: BookOpen },
@@ -44,6 +57,8 @@ const estadoLabels: Record<string, string> = {
 }
 
 export function DocumentosPage() {
+  const searchParams = useSearchParams()
+  const tabFromUrl = searchParams.get("tab")
   const [activeTab, setActiveTab] = useState<DocTab>("estatuto")
   const [expandedArticle, setExpandedArticle] = useState<string | null>(null)
   const { loading, getEstatuto, getResoluciones, getBalances, getConfig } = useDocumentos()
@@ -55,12 +70,13 @@ export function DocumentosPage() {
   const [balances, setBalances] = useState<Balance[]>([])
   const [tabLoading, setTabLoading] = useState(true)
   const [estatutoPdfUrl, setEstatutoPdfUrl] = useState<string | null>(null)
+  const [selectedNorma, setSelectedNorma] = useState<Resolucion | null>(null)
 
   // Check if user is admin
   const isAdmin = hasPermission("documentos", "crear")
 
-  useEffect(() => {
-    const loadData = async () => {
+  const loadData = useCallback(async () => {
+    try {
       setTabLoading(true)
       if (activeTab === "estatuto") {
         const [data, pdfUrl] = await Promise.all([
@@ -69,8 +85,8 @@ export function DocumentosPage() {
         ])
         setArticulos(data)
         setEstatutoPdfUrl(pdfUrl)
-        if (data.length > 0 && !expandedArticle) {
-          setExpandedArticle(data[0].id)
+        if (data.length > 0) {
+          setExpandedArticle((current) => current || data[0].id)
         }
       } else if (activeTab === "resoluciones") {
         const data = await getResoluciones("asamblea")
@@ -82,10 +98,22 @@ export function DocumentosPage() {
         const data = await getBalances()
         setBalances(data)
       }
+    } finally {
       setTabLoading(false)
     }
-    loadData()
-  }, [activeTab, getEstatuto, getResoluciones, getBalances, getConfig])
+  }, [activeTab, getBalances, getConfig, getEstatuto, getResoluciones])
+
+  useEffect(() => {
+    if (isDocTab(tabFromUrl)) {
+      setActiveTab(tabFromUrl)
+    }
+  }, [tabFromUrl])
+
+  useEffect(() => {
+    void loadData()
+  }, [loadData])
+
+  useResumeRefresh(() => { void loadData() }, { throttleMs: 5_000 })
 
   const handleDownload = (url: string | undefined, filename: string) => {
     if (!url) return
@@ -96,6 +124,17 @@ export function DocumentosPage() {
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
+  }
+
+  const handleOpenNorma = (norma: Resolucion) => {
+    setSelectedNorma(norma)
+  }
+
+  const formatNormaNumero = (norma: Resolucion) => {
+    if (norma.tipo === "decreto") {
+      return `Dec. CD ${String(norma.numero).padStart(3, "0")}/${norma.anio}`
+    }
+    return `Res. ${String(norma.numero).padStart(3, "0")}/${norma.anio}`
   }
 
   return (
@@ -240,25 +279,49 @@ export function DocumentosPage() {
                             const s = estadoStyles[res.estado] || estadoStyles.vigente
                             return (
                               <tr key={res.id} className="border-b border-border/50 hover:bg-muted/30 transition-colors">
-                                <td className="p-4 text-sm font-mono font-medium" style={{ color: "#6314a7" }}>Res. {String(res.numero).padStart(3, "0")}/{res.anio}</td>
-                                <td className="p-4 text-sm text-foreground">{res.titulo}</td>
+                                <td className="p-4 text-sm font-mono font-medium">
+                                  <button
+                                    onClick={() => handleOpenNorma(res)}
+                                    className="hover:underline underline-offset-2"
+                                    style={{ color: "#6314a7" }}
+                                  >
+                                    {formatNormaNumero(res)}
+                                  </button>
+                                </td>
+                                <td className="p-4 text-sm text-foreground">
+                                  <button onClick={() => handleOpenNorma(res)} className="text-left hover:text-[#6314a7] transition-colors">
+                                    {res.titulo}
+                                  </button>
+                                </td>
                                 <td className="p-4 text-sm text-muted-foreground">{formatDate(res.fecha)}</td>
                                 <td className="p-4">
                                   <Badge variant="secondary" className="text-[10px] border-0 font-medium" style={{ backgroundColor: s.bg, color: s.color }}>{estadoLabels[res.estado] || res.estado}</Badge>
                                 </td>
                                 <td className="p-4 text-right">
-                                  {res.archivo_url && (
+                                  <div className="flex items-center justify-end gap-1">
                                     <TooltipProvider>
                                       <Tooltip>
                                         <TooltipTrigger asChild>
-                                          <Button onClick={() => handleDownload(res.archivo_url, `Resolucion_${res.numero}_${res.anio}.pdf`)} size="sm" variant="ghost" className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground">
-                                            <Download className="w-4 h-4" />
+                                          <Button onClick={() => handleOpenNorma(res)} size="sm" variant="ghost" className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground">
+                                            <Eye className="w-4 h-4" />
                                           </Button>
                                         </TooltipTrigger>
-                                        <TooltipContent><p>Descargar PDF</p></TooltipContent>
+                                        <TooltipContent><p>Ver texto completo</p></TooltipContent>
                                       </Tooltip>
                                     </TooltipProvider>
-                                  )}
+                                    {res.archivo_url && (
+                                      <TooltipProvider>
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <Button onClick={() => handleDownload(res.archivo_url, `Resolucion_${res.numero}_${res.anio}.pdf`)} size="sm" variant="ghost" className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground">
+                                              <Download className="w-4 h-4" />
+                                            </Button>
+                                          </TooltipTrigger>
+                                          <TooltipContent><p>Descargar PDF</p></TooltipContent>
+                                        </Tooltip>
+                                      </TooltipProvider>
+                                    )}
+                                  </div>
                                 </td>
                               </tr>
                             )
@@ -277,12 +340,25 @@ export function DocumentosPage() {
                           <CardContent className="p-4">
                             <div className="flex items-start justify-between gap-3">
                               <div className="flex-1 min-w-0">
-                                <span className="text-xs font-mono font-medium" style={{ color: "#6314a7" }}>Res. {String(res.numero).padStart(3, "0")}/{res.anio}</span>
-                                <p className="text-sm text-foreground mt-1">{res.titulo}</p>
+                                <button
+                                  onClick={() => handleOpenNorma(res)}
+                                  className="text-xs font-mono font-medium hover:underline underline-offset-2 break-all"
+                                  style={{ color: "#6314a7" }}
+                                >
+                                  {formatNormaNumero(res)}
+                                </button>
+                                <p className="text-sm text-foreground mt-1 break-words">
+                                  <button onClick={() => handleOpenNorma(res)} className="text-left hover:text-[#6314a7] transition-colors">
+                                    {res.titulo}
+                                  </button>
+                                </p>
                                 <div className="flex items-center gap-2 mt-2">
                                   <span className="text-xs text-muted-foreground">{formatDate(res.fecha)}</span>
                                   <Badge variant="secondary" className="text-[10px] border-0 font-medium" style={{ backgroundColor: s.bg, color: s.color }}>{estadoLabels[res.estado] || res.estado}</Badge>
                                 </div>
+                                <Button onClick={() => handleOpenNorma(res)} size="sm" variant="link" className="h-auto p-0 mt-2 text-[#6314a7]">
+                                  Ver texto completo
+                                </Button>
                               </div>
                               {res.archivo_url && (
                                 <Button onClick={() => handleDownload(res.archivo_url, `Resolucion_${res.numero}_${res.anio}.pdf`)} size="sm" variant="ghost" className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground shrink-0">
@@ -326,18 +402,49 @@ export function DocumentosPage() {
                             const s = estadoStyles[dec.estado] || estadoStyles.vigente
                             return (
                               <tr key={dec.id} className="border-b border-border/50 hover:bg-muted/30 transition-colors">
-                                <td className="p-4 text-sm font-mono font-medium" style={{ color: "#6314a7" }}>Dec. CD {String(dec.numero).padStart(3, "0")}/{dec.anio}</td>
-                                <td className="p-4 text-sm text-foreground">{dec.titulo}</td>
+                                <td className="p-4 text-sm font-mono font-medium">
+                                  <button
+                                    onClick={() => handleOpenNorma(dec)}
+                                    className="hover:underline underline-offset-2"
+                                    style={{ color: "#6314a7" }}
+                                  >
+                                    {formatNormaNumero(dec)}
+                                  </button>
+                                </td>
+                                <td className="p-4 text-sm text-foreground">
+                                  <button onClick={() => handleOpenNorma(dec)} className="text-left hover:text-[#6314a7] transition-colors">
+                                    {dec.titulo}
+                                  </button>
+                                </td>
                                 <td className="p-4 text-sm text-muted-foreground">{formatDate(dec.fecha)}</td>
                                 <td className="p-4">
                                   <Badge variant="secondary" className="text-[10px] border-0 font-medium" style={{ backgroundColor: s.bg, color: s.color }}>{estadoLabels[dec.estado] || dec.estado}</Badge>
                                 </td>
                                 <td className="p-4 text-right">
-                                  {dec.archivo_url && (
-                                    <Button onClick={() => handleDownload(dec.archivo_url, `Decreto_${dec.numero}_${dec.anio}.pdf`)} size="sm" variant="ghost" className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground">
-                                      <Download className="w-4 h-4" />
-                                    </Button>
-                                  )}
+                                  <div className="flex items-center justify-end gap-1">
+                                    <TooltipProvider>
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <Button onClick={() => handleOpenNorma(dec)} size="sm" variant="ghost" className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground">
+                                            <Eye className="w-4 h-4" />
+                                          </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent><p>Ver texto completo</p></TooltipContent>
+                                      </Tooltip>
+                                    </TooltipProvider>
+                                    {dec.archivo_url && (
+                                      <TooltipProvider>
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <Button onClick={() => handleDownload(dec.archivo_url, `Decreto_${dec.numero}_${dec.anio}.pdf`)} size="sm" variant="ghost" className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground">
+                                              <Download className="w-4 h-4" />
+                                            </Button>
+                                          </TooltipTrigger>
+                                          <TooltipContent><p>Descargar PDF</p></TooltipContent>
+                                        </Tooltip>
+                                      </TooltipProvider>
+                                    )}
+                                  </div>
                                 </td>
                               </tr>
                             )
@@ -355,12 +462,25 @@ export function DocumentosPage() {
                           <CardContent className="p-4">
                             <div className="flex items-start justify-between gap-3">
                               <div className="flex-1 min-w-0">
-                                <span className="text-xs font-mono font-medium" style={{ color: "#6314a7" }}>Dec. CD {String(dec.numero).padStart(3, "0")}/{dec.anio}</span>
-                                <p className="text-sm text-foreground mt-1">{dec.titulo}</p>
+                                <button
+                                  onClick={() => handleOpenNorma(dec)}
+                                  className="text-xs font-mono font-medium hover:underline underline-offset-2 break-all"
+                                  style={{ color: "#6314a7" }}
+                                >
+                                  {formatNormaNumero(dec)}
+                                </button>
+                                <p className="text-sm text-foreground mt-1 break-words">
+                                  <button onClick={() => handleOpenNorma(dec)} className="text-left hover:text-[#6314a7] transition-colors">
+                                    {dec.titulo}
+                                  </button>
+                                </p>
                                 <div className="flex items-center gap-2 mt-2">
                                   <span className="text-xs text-muted-foreground">{formatDate(dec.fecha)}</span>
                                   <Badge variant="secondary" className="text-[10px] border-0 font-medium" style={{ backgroundColor: s.bg, color: s.color }}>{estadoLabels[dec.estado] || dec.estado}</Badge>
                                 </div>
+                                <Button onClick={() => handleOpenNorma(dec)} size="sm" variant="link" className="h-auto p-0 mt-2 text-[#6314a7]">
+                                  Ver texto completo
+                                </Button>
                               </div>
                               {dec.archivo_url && (
                                 <Button onClick={() => handleDownload(dec.archivo_url, `Decreto_${dec.numero}_${dec.anio}.pdf`)} size="sm" variant="ghost" className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground shrink-0">
@@ -420,6 +540,44 @@ export function DocumentosPage() {
           )}
         </>
       )}
+
+      <Dialog open={Boolean(selectedNorma)} onOpenChange={(isOpen) => !isOpen && setSelectedNorma(null)}>
+        <DialogContent className="sm:max-w-3xl max-h-[85vh] overflow-x-hidden">
+          <DialogHeader>
+            <DialogTitle>{selectedNorma ? formatNormaNumero(selectedNorma) : "Norma"}</DialogTitle>
+            <DialogDescription className="space-y-1">
+              <span className="block">{selectedNorma?.titulo || "Sin título"}</span>
+              {selectedNorma?.fecha && (
+                <span className="block">Fecha: {formatDate(selectedNorma.fecha)}</span>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="max-h-[55vh] overflow-y-auto overflow-x-hidden rounded-md border p-4">
+            {selectedNorma?.contenido ? (
+              <div
+                className="prose prose-sm max-w-none break-words dark:prose-invert"
+                dangerouslySetInnerHTML={{ __html: selectedNorma.contenido }}
+              />
+            ) : (
+              <p className="text-sm text-muted-foreground">Esta norma no tiene texto cargado.</p>
+            )}
+          </div>
+
+          {selectedNorma?.archivo_url && (
+            <div className="flex justify-end">
+              <Button
+                variant="outline"
+                className="gap-2"
+                onClick={() => handleDownload(selectedNorma.archivo_url, `${selectedNorma.tipo}_${selectedNorma.numero}_${selectedNorma.anio}.pdf`)}
+              >
+                <Download className="w-4 h-4" />
+                Descargar PDF
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

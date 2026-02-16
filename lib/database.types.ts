@@ -277,6 +277,130 @@ export interface Database {
           created_at?: string
         }
       }
+      solicitudes_reintegro: {
+        Row: {
+          id: string
+          numero: string | null
+          solicitante_socio_id: string
+          tesorero_socio_id: string | null
+          estado: Database['public']['Enums']['reintegro_estado']
+          fecha_gasto: string
+          fecha_solicitud: string | null
+          fecha_aprobacion: string | null
+          fecha_pago: string | null
+          categoria_id: string | null
+          cuenta_pago_id: string | null
+          monto_solicitado: number
+          monto_aprobado: number | null
+          moneda: string
+          descripcion: string
+          factura_url: string
+          factura_numero: string | null
+          factura_emisor: string | null
+          motivo_rechazo: string | null
+          motivo_observacion: string | null
+          comprobante_pago_url: string | null
+          movimiento_id: string | null
+          created_at: string
+          updated_at: string
+          created_by: string | null
+          updated_by: string | null
+        }
+        Insert: {
+          id?: string
+          numero?: string | null
+          solicitante_socio_id: string
+          tesorero_socio_id?: string | null
+          estado?: Database['public']['Enums']['reintegro_estado']
+          fecha_gasto: string
+          fecha_solicitud?: string | null
+          fecha_aprobacion?: string | null
+          fecha_pago?: string | null
+          categoria_id?: string | null
+          cuenta_pago_id?: string | null
+          monto_solicitado: number
+          monto_aprobado?: number | null
+          moneda?: string
+          descripcion: string
+          factura_url: string
+          factura_numero?: string | null
+          factura_emisor?: string | null
+          motivo_rechazo?: string | null
+          motivo_observacion?: string | null
+          comprobante_pago_url?: string | null
+          movimiento_id?: string | null
+          created_at?: string
+          updated_at?: string
+          created_by?: string | null
+          updated_by?: string | null
+        }
+        Update: {
+          id?: string
+          numero?: string | null
+          solicitante_socio_id?: string
+          tesorero_socio_id?: string | null
+          estado?: Database['public']['Enums']['reintegro_estado']
+          fecha_gasto?: string
+          fecha_solicitud?: string | null
+          fecha_aprobacion?: string | null
+          fecha_pago?: string | null
+          categoria_id?: string | null
+          cuenta_pago_id?: string | null
+          monto_solicitado?: number
+          monto_aprobado?: number | null
+          moneda?: string
+          descripcion?: string
+          factura_url?: string
+          factura_numero?: string | null
+          factura_emisor?: string | null
+          motivo_rechazo?: string | null
+          motivo_observacion?: string | null
+          comprobante_pago_url?: string | null
+          movimiento_id?: string | null
+          created_at?: string
+          updated_at?: string
+          created_by?: string | null
+          updated_by?: string | null
+        }
+      }
+      solicitudes_reintegro_historial: {
+        Row: {
+          id: string
+          solicitud_id: string
+          accion: string
+          estado_anterior: Database['public']['Enums']['reintegro_estado'] | null
+          estado_nuevo: Database['public']['Enums']['reintegro_estado'] | null
+          comentario: string | null
+          metadata: Json
+          actor_user_id: string
+          actor_socio_id: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          solicitud_id: string
+          accion: string
+          estado_anterior?: Database['public']['Enums']['reintegro_estado'] | null
+          estado_nuevo?: Database['public']['Enums']['reintegro_estado'] | null
+          comentario?: string | null
+          metadata?: Json
+          actor_user_id: string
+          actor_socio_id?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          solicitud_id?: string
+          accion?: string
+          estado_anterior?: Database['public']['Enums']['reintegro_estado'] | null
+          estado_nuevo?: Database['public']['Enums']['reintegro_estado'] | null
+          comentario?: string | null
+          metadata?: Json
+          actor_user_id?: string
+          actor_socio_id?: string | null
+          created_at?: string
+        }
+      }
       resoluciones: {
         Row: {
           id: string
@@ -411,10 +535,65 @@ export interface Database {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      rpc_crear_solicitud_reintegro: {
+        Args: {
+          p_payload: Json
+        }
+        Returns: Database['public']['Tables']['solicitudes_reintegro']['Row']
+      }
+      rpc_enviar_solicitud_reintegro: {
+        Args: {
+          p_solicitud_id: string
+        }
+        Returns: Database['public']['Tables']['solicitudes_reintegro']['Row']
+      }
+      rpc_observar_solicitud_reintegro: {
+        Args: {
+          p_solicitud_id: string
+          p_motivo: string
+        }
+        Returns: Database['public']['Tables']['solicitudes_reintegro']['Row']
+      }
+      rpc_aprobar_solicitud_reintegro: {
+        Args: {
+          p_solicitud_id: string
+          p_monto_aprobado: number | null
+        }
+        Returns: Database['public']['Tables']['solicitudes_reintegro']['Row']
+      }
+      rpc_rechazar_solicitud_reintegro: {
+        Args: {
+          p_solicitud_id: string
+          p_motivo: string
+        }
+        Returns: Database['public']['Tables']['solicitudes_reintegro']['Row']
+      }
+      rpc_registrar_pago_reintegro: {
+        Args: {
+          p_solicitud_id: string
+          p_cuenta_pago_id: string
+          p_fecha_pago: string
+          p_comprobante_pago_url: string
+        }
+        Returns: Database['public']['Tables']['solicitudes_reintegro']['Row']
+      }
+      rpc_cancelar_solicitud_reintegro: {
+        Args: {
+          p_solicitud_id: string
+          p_motivo: string | null
+        }
+        Returns: Database['public']['Tables']['solicitudes_reintegro']['Row']
+      }
     }
     Enums: {
-      [_ in never]: never
+      reintegro_estado:
+        | 'borrador'
+        | 'pendiente_aprobacion'
+        | 'observada'
+        | 'aprobada_pendiente_pago'
+        | 'rechazada'
+        | 'pagada'
+        | 'cancelada'
     }
   }
 }
