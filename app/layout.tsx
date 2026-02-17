@@ -14,6 +14,11 @@ const lato = Lato({
 export const metadata: Metadata = {
   title: 'AILE — Panel Interno',
   description: 'Panel de gestión interna - Asociación Independiente para Líderes Empoderados',
+  icons: {
+    icon: '/icon.png',
+    shortcut: '/icon.png',
+    apple: '/apple-icon.png',
+  },
 }
 
 export default function RootLayout({

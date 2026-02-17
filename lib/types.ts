@@ -77,6 +77,7 @@ export interface Socio {
 
 export type CalendarioAlcanceReunion = 'personalizada' | 'comision_directiva' | 'general'
 export type CalendarioParticipacionReunion = 'invitado' | 'involucrado'
+export type CalendarioEstadoPlanificacion = 'tentativo' | 'definitivo'
 
 export interface SocioCalendario {
   id: string
@@ -110,6 +111,18 @@ export interface ReunionCalendario {
   created_at: string
   updated_at: string
   participantes?: ReunionCalendarioParticipante[]
+}
+
+export interface PlanificacionCalendario {
+  id: string
+  titulo: string
+  descripcion?: string | null
+  fecha_inicio: string
+  fecha_fin: string
+  estado: CalendarioEstadoPlanificacion
+  created_by?: string | null
+  created_at: string
+  updated_at: string
 }
 
 export type TipoProyectoTarea = 'institucional' | 'interno_direccion'

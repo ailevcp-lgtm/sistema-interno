@@ -7,13 +7,14 @@ import {
   AlertTriangle,
   Wallet,
   FileText,
+  CalendarDays,
+  Megaphone,
   ArrowRight,
   TrendingUp,
   TrendingDown,
   KanbanSquare,
-  Loader2,
 } from 'lucide-react'
-import { cn, formatARS } from '@/lib/utils'
+import { cn, formatARS, formatDate, formatDateTime } from '@/lib/utils'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
 import { ROL_LABELS, ROL_COLORS } from '@/lib/constants'
@@ -32,6 +33,56 @@ interface DashboardStats {
   resolucionesVigentes: number
 }
 
+interface AgendaItem {
+  id: string
+  tipo: 'reunion' | 'planificacion'
+  titulo: string
+  inicio: string
+  fin: string
+  estado?: 'tentativo' | 'definitivo'
+}
+
+interface SupabaseErrorLike {
+  code?: string
+  message?: string
+  details?: string
+}
+
+function isMissingRelationError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false
+  const maybe = error as SupabaseErrorLike
+  const code = (maybe.code || '').toUpperCase()
+  const details = `${maybe.message || ''} ${maybe.details || ''}`.toLowerCase()
+
+  return (
+    code === '42P01' ||
+    code === 'PGRST205' ||
+    details.includes('does not exist') ||
+    details.includes('could not find the table')
+  )
+}
+
+function formatAgendaRange(item: AgendaItem): string {
+  if (item.tipo === 'reunion') {
+    return formatDateTime(item.inicio)
+  }
+
+  const inicio = item.inicio.slice(0, 10)
+  const fin = item.fin.slice(0, 10)
+  if (inicio === fin) return formatDate(inicio)
+  return `${formatDate(inicio)} - ${formatDate(fin)}`
+}
+
+function isImportantAgendaItem(item: AgendaItem): boolean {
+  if (item.tipo === 'planificacion' && item.estado === 'definitivo') return true
+
+  const now = Date.now()
+  const start = new Date(item.inicio).getTime()
+  const diffMs = start - now
+  const sevenDaysMs = 7 * 24 * 60 * 60 * 1000
+  return diffMs >= 0 && diffMs <= sevenDaysMs
+}
+
 export default function DashboardPage() {
   const { user, rol, hasPermission } = useAuth()
   const [stats, setStats] = useState<DashboardStats>({
@@ -44,6 +95,8 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [resoluciones, setResoluciones] = useState<Resolucion[]>([])
   const [loadingResoluciones, setLoadingResoluciones] = useState(true)
+  const [agendaItems, setAgendaItems] = useState<AgendaItem[]>([])
+  const [loadingAgenda, setLoadingAgenda] = useState(true)
 
   const nombre = user?.nombre || 'Usuario'
   const apellido = user?.apellido || ''
@@ -125,14 +178,79 @@ export default function DashboardPage() {
     }
   }, [])
 
+  const fetchAgendaItems = useCallback(async () => {
+    try {
+      setLoadingAgenda(true)
+
+      const nowIso = new Date().toISOString()
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      const todayKey = today.toISOString().slice(0, 10)
+
+      const [reunionesResult, planificacionesResult] = await Promise.all([
+        runWithRecovery(() => supabase
+          .from('reuniones_calendario')
+          .select('id, titulo, fecha_inicio, fecha_fin')
+          .gte('fecha_fin', nowIso)
+          .order('fecha_inicio', { ascending: true })
+          .limit(8), {
+            label: 'dashboard reuniones proximas',
+          }),
+        runWithRecovery(() => supabase
+          .from('planificaciones_calendario')
+          .select('id, titulo, fecha_inicio, fecha_fin, estado')
+          .gte('fecha_fin', todayKey)
+          .order('fecha_inicio', { ascending: true })
+          .limit(12), {
+            label: 'dashboard planificaciones proximas',
+          }),
+      ])
+
+      const reunionesError = reunionesResult.error
+      const planificacionesError = planificacionesResult.error
+      if (reunionesError && !isMissingRelationError(reunionesError)) throw reunionesError
+      if (planificacionesError && !isMissingRelationError(planificacionesError)) throw planificacionesError
+
+      const reuniones = (reunionesResult.data || []).map((r) => ({
+        id: `reunion-${r.id}`,
+        tipo: 'reunion' as const,
+        titulo: r.titulo || 'Reunión sin título',
+        inicio: r.fecha_inicio,
+        fin: r.fecha_fin,
+      }))
+
+      const planificaciones = (planificacionesResult.data || []).map((p) => ({
+        id: `planificacion-${p.id}`,
+        tipo: 'planificacion' as const,
+        titulo: p.titulo || 'Actividad sin título',
+        inicio: `${p.fecha_inicio}T00:00:00`,
+        fin: `${p.fecha_fin}T23:59:59`,
+        estado: p.estado as 'tentativo' | 'definitivo',
+      }))
+
+      const unified = [...reuniones, ...planificaciones]
+        .sort((a, b) => new Date(a.inicio).getTime() - new Date(b.inicio).getTime())
+        .slice(0, 6)
+
+      setAgendaItems(unified)
+    } catch (error) {
+      console.error('Error fetching dashboard agenda:', error)
+      setAgendaItems([])
+    } finally {
+      setLoadingAgenda(false)
+    }
+  }, [])
+
   useEffect(() => {
     void fetchDashboardData()
     void fetchResolucionesRecientes()
-  }, [fetchDashboardData, fetchResolucionesRecientes])
+    void fetchAgendaItems()
+  }, [fetchDashboardData, fetchResolucionesRecientes, fetchAgendaItems])
 
   useResumeRefresh(() => {
     void fetchDashboardData()
     void fetchResolucionesRecientes()
+    void fetchAgendaItems()
   }, { throttleMs: 5_000 })
 
   return (
@@ -247,7 +365,7 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      {/* Latest News and Quick Actions */}
+      {/* Latest News and Agenda */}
       <div className="grid lg:grid-cols-2 gap-6">
         {/* Últimas novedades */}
         <Card className="bg-card border-border overflow-hidden">
@@ -304,81 +422,185 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        {/* Accesos rápidos */}
+        {/* Próximas fechas importantes */}
         <Card className="bg-card border-border overflow-hidden">
           <CardHeader className="pb-4">
             <CardTitle className="text-lg text-foreground flex items-center gap-2">
-              <TrendingUp className="w-5 h-5" style={{ color: "#6314a7" }} />
-              Accesos rápidos
+              <CalendarDays className="w-5 h-5" style={{ color: "#6314a7" }} />
+              Próximas fechas importantes
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <Button
-                variant="outline"
-                size="sm"
-                asChild
-                className="w-full min-w-0 justify-start bg-muted border-border text-foreground hover:bg-muted/80"
-              >
-                <Link href="/tareas">
-                  <KanbanSquare className="mr-2 h-4 w-4 shrink-0" />
-                  <span className="truncate">Ir a tareas</span>
-                </Link>
-              </Button>
+            {loadingAgenda ? (
+              <div className="space-y-3">
+                {[1, 2, 3, 4].map((i) => (
+                  <Skeleton key={i} className="h-20 w-full" />
+                ))}
+              </div>
+            ) : agendaItems.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-border/70 bg-muted/40 p-4 text-center">
+                <p className="text-sm text-muted-foreground">
+                  Todavía no hay fechas próximas cargadas.
+                </p>
+                <Button variant="outline" size="sm" className="mt-3" asChild>
+                  <Link href="/calendario">Ir al calendario</Link>
+                </Button>
+              </div>
+            ) : (
+              <>
+                <div className="space-y-3">
+                  {agendaItems.map((item) => (
+                    <Link
+                      key={item.id}
+                      href="/calendario"
+                      className="group block min-w-0 overflow-hidden rounded-lg bg-muted p-3 transition-colors hover:bg-muted/80"
+                    >
+                      <div className="flex min-w-0 items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="mb-1.5 flex min-w-0 items-center gap-2 flex-wrap">
+                            <span className={cn(
+                              'shrink-0 rounded-full px-2 py-0.5 text-xs',
+                              item.tipo === 'planificacion'
+                                ? 'bg-cyan-100 text-cyan-800'
+                                : 'bg-violet-100 text-violet-800'
+                            )}>
+                              {item.tipo === 'planificacion' ? 'Planificación' : 'Reunión'}
+                            </span>
 
-              <Button
-                variant="outline"
-                size="sm"
-                asChild
-                className="w-full min-w-0 justify-start bg-muted border-border text-foreground hover:bg-muted/80"
-              >
-                <Link href="/socios">
-                  <Users className="mr-2 h-4 w-4 shrink-0" />
-                  <span className="truncate">Ver socios</span>
-                </Link>
-              </Button>
+                            {item.estado && (
+                              <span className={cn(
+                                'shrink-0 rounded-full px-2 py-0.5 text-xs',
+                                item.estado === 'definitivo'
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : 'bg-amber-100 text-amber-800'
+                              )}>
+                                {item.estado === 'definitivo' ? 'Definitiva' : 'Tentativa'}
+                              </span>
+                            )}
 
-              <Button
-                variant="outline"
-                size="sm"
-                asChild
-                className="w-full min-w-0 justify-start bg-muted border-border text-foreground hover:bg-muted/80"
-              >
-                <Link href="/deudas/mi-cuenta">
-                  <Wallet className="mr-2 h-4 w-4 shrink-0" />
-                  <span className="truncate">Mi estado de cuenta</span>
-                </Link>
-              </Button>
+                            {isImportantAgendaItem(item) && (
+                              <span className="shrink-0 rounded-full bg-[#e50051]/10 px-2 py-0.5 text-xs text-[#e50051]">
+                                Importante
+                              </span>
+                            )}
+                          </div>
 
-              <Button
-                variant="outline"
-                size="sm"
-                asChild
-                className="w-full min-w-0 justify-start bg-muted border-border text-foreground hover:bg-muted/80"
-              >
-                <Link href="/documentos?tab=estatuto">
-                  <FileText className="mr-2 h-4 w-4 shrink-0" />
-                  <span className="truncate">Ver estatuto</span>
-                </Link>
-              </Button>
+                          <p className="w-full truncate text-sm font-medium text-foreground transition-colors group-hover:text-primary">
+                            {item.titulo}
+                          </p>
+                          <p className="mt-0.5 text-xs text-muted-foreground">
+                            {formatAgendaRange(item)}
+                          </p>
+                        </div>
+                        <ArrowRight className="hidden h-4 w-4 shrink-0 text-muted-foreground transition-colors group-hover:text-primary sm:block" />
+                      </div>
+                    </Link>
+                  ))}
+                </div>
 
-              {hasPermission('finanzas', 'crear') && (
                 <Button
                   variant="outline"
                   size="sm"
                   asChild
-                  className="w-full min-w-0 justify-start bg-muted border-border text-foreground hover:bg-muted/80"
+                  className="mt-4 w-full min-w-0 justify-start bg-muted border-border text-foreground hover:bg-muted/80"
                 >
-                  <Link href="/finanzas">
-                    <TrendingDown className="mr-2 h-4 w-4 shrink-0" />
-                    <span className="truncate">Registrar egreso</span>
+                  <Link href="/calendario">
+                    <CalendarDays className="mr-2 h-4 w-4 shrink-0" />
+                    <span className="truncate">Ver agenda completa</span>
                   </Link>
                 </Button>
-              )}
-            </div>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>
+
+      {/* Accesos rápidos */}
+      <Card className="bg-card border-border overflow-hidden">
+        <CardHeader className="pb-4">
+          <CardTitle className="text-lg text-foreground flex items-center gap-2">
+            <TrendingUp className="w-5 h-5" style={{ color: "#6314a7" }} />
+            Accesos rápidos
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            <Button
+              variant="outline"
+              size="sm"
+              asChild
+              className="w-full min-w-0 justify-start bg-muted border-border text-foreground hover:bg-muted/80"
+            >
+              <Link href="/tareas">
+                <KanbanSquare className="mr-2 h-4 w-4 shrink-0" />
+                <span className="truncate">Ir a tareas</span>
+              </Link>
+            </Button>
+
+            <Button
+              variant="outline"
+              size="sm"
+              asChild
+              className="w-full min-w-0 justify-start bg-muted border-border text-foreground hover:bg-muted/80"
+            >
+              <Link href="/socios">
+                <Users className="mr-2 h-4 w-4 shrink-0" />
+                <span className="truncate">Ver socios</span>
+              </Link>
+            </Button>
+
+            <Button
+              variant="outline"
+              size="sm"
+              asChild
+              className="w-full min-w-0 justify-start bg-muted border-border text-foreground hover:bg-muted/80"
+            >
+              <Link href="/deudas/mi-cuenta">
+                <Wallet className="mr-2 h-4 w-4 shrink-0" />
+                <span className="truncate">Mi estado de cuenta</span>
+              </Link>
+            </Button>
+
+            <Button
+              variant="outline"
+              size="sm"
+              asChild
+              className="w-full min-w-0 justify-start bg-muted border-border text-foreground hover:bg-muted/80"
+            >
+              <Link href="/calendario">
+                <Megaphone className="mr-2 h-4 w-4 shrink-0" />
+                <span className="truncate">Ver calendario</span>
+              </Link>
+            </Button>
+
+            <Button
+              variant="outline"
+              size="sm"
+              asChild
+              className="w-full min-w-0 justify-start bg-muted border-border text-foreground hover:bg-muted/80"
+            >
+              <Link href="/documentos?tab=estatuto">
+                <FileText className="mr-2 h-4 w-4 shrink-0" />
+                <span className="truncate">Ver estatuto</span>
+              </Link>
+            </Button>
+
+            {hasPermission('finanzas', 'crear') && (
+              <Button
+                variant="outline"
+                size="sm"
+                asChild
+                className="w-full min-w-0 justify-start bg-muted border-border text-foreground hover:bg-muted/80"
+              >
+                <Link href="/finanzas">
+                  <TrendingDown className="mr-2 h-4 w-4 shrink-0" />
+                  <span className="truncate">Registrar egreso</span>
+                </Link>
+              </Button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }

@@ -4,12 +4,16 @@ import { useMemo, useRef, useState } from 'react'
 import {
   CalendarDays,
   Clock3,
+  CalendarClock,
+  ListChecks,
+  Flag,
   MapPin,
   Users,
   UserCheck,
   Megaphone,
   ShieldAlert,
   Pencil,
+  Trash2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuth } from '@/hooks/useAuth'
@@ -32,6 +36,8 @@ import {
 import { cn } from '@/lib/utils'
 import type {
   CalendarioAlcanceReunion,
+  CalendarioEstadoPlanificacion,
+  PlanificacionCalendario,
   ReunionCalendario,
   ReunionCalendarioParticipante,
 } from '@/lib/types'
@@ -48,6 +54,16 @@ const ALCANCE_BADGES: Record<CalendarioAlcanceReunion, string> = {
   general: 'bg-emerald-100 text-emerald-800 border-emerald-200',
 }
 
+const PLANIFICACION_ESTADO_LABELS: Record<CalendarioEstadoPlanificacion, string> = {
+  tentativo: 'Tentativa',
+  definitivo: 'Definitiva',
+}
+
+const PLANIFICACION_ESTADO_BADGES: Record<CalendarioEstadoPlanificacion, string> = {
+  tentativo: 'bg-amber-100 text-amber-800 border-amber-200',
+  definitivo: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+}
+
 interface MeetingFormState {
   titulo: string
   descripcion: string
@@ -57,9 +73,64 @@ interface MeetingFormState {
   alcance: CalendarioAlcanceReunion
 }
 
+interface PlanningFormState {
+  titulo: string
+  descripcion: string
+  fechaInicio: string
+  fechaFin: string
+  estado: CalendarioEstadoPlanificacion
+}
+
 function toDateTimeLocalValue(date: Date): string {
   const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
   return local.toISOString().slice(0, 16)
+}
+
+function toDateInputValue(date: Date): string {
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
+  return local.toISOString().slice(0, 10)
+}
+
+function parseDateOnly(value: string): Date | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
+  if (!match) return null
+
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+
+  const date = new Date(year, month - 1, day, 0, 0, 0, 0)
+  if (
+    Number.isNaN(date.getTime()) ||
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  ) {
+    return null
+  }
+
+  return date
+}
+
+function parseCalendarDate(value: string): Date {
+  return parseDateOnly(value) ?? new Date(value)
+}
+
+function formatDateOnly(value: string): string {
+  const parsed = parseCalendarDate(value)
+  if (Number.isNaN(parsed.getTime())) return value
+
+  return parsed.toLocaleDateString('es-AR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  })
+}
+
+function formatPlanningRange(item: Pick<PlanificacionCalendario, 'fecha_inicio' | 'fecha_fin'>): string {
+  const inicio = formatDateOnly(item.fecha_inicio)
+  if (item.fecha_fin === item.fecha_inicio) return inicio
+  return `${inicio} - ${formatDateOnly(item.fecha_fin)}`
 }
 
 function parseLocalDateTime(localDateTime: string): Date | null {
@@ -125,10 +196,21 @@ function buildDefaultFormState(): MeetingFormState {
   }
 }
 
+function buildDefaultPlanningFormState(baseDate: Date = new Date()): PlanningFormState {
+  const startValue = toDateInputValue(baseDate)
+  return {
+    titulo: '',
+    descripcion: '',
+    fechaInicio: startValue,
+    fechaFin: startValue,
+    estado: 'tentativo',
+  }
+}
+
 function dateKey(date: Date): string
 function dateKey(date: string): string
 function dateKey(date: Date | string): string {
-  const parsed = typeof date === 'string' ? new Date(date) : date
+  const parsed = typeof date === 'string' ? parseCalendarDate(date) : date
   if (Number.isNaN(parsed.getTime())) return ''
 
   const pad = (value: number) => String(value).padStart(2, '0')
@@ -261,30 +343,140 @@ function ReunionCard({
   )
 }
 
+function PlanificacionCard({
+  planificacion,
+  compact = false,
+  canEdit = false,
+  canDelete = false,
+  onEdit,
+  onDelete,
+}: {
+  planificacion: PlanificacionCalendario
+  compact?: boolean
+  canEdit?: boolean
+  canDelete?: boolean
+  onEdit?: (planificacion: PlanificacionCalendario) => void
+  onDelete?: (planificacion: PlanificacionCalendario) => void
+}) {
+  return (
+    <div
+      className={cn(
+        'rounded-xl border bg-card/90 p-4 transition-colors hover:bg-muted/20',
+        compact ? 'space-y-2' : 'space-y-3'
+      )}
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge variant="outline" className={cn('font-medium', PLANIFICACION_ESTADO_BADGES[planificacion.estado])}>
+          {PLANIFICACION_ESTADO_LABELS[planificacion.estado]}
+        </Badge>
+
+        {(canEdit || canDelete) && (
+          <div className="ml-auto flex items-center gap-1">
+            {canEdit && onEdit && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 px-2 text-xs"
+                onClick={(event) => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  onEdit(planificacion)
+                }}
+              >
+                <Pencil className="w-3.5 h-3.5 mr-1" />
+                Editar
+              </Button>
+            )}
+            {canDelete && onDelete && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 px-2 text-xs text-red-700 border-red-200 hover:bg-red-50"
+                onClick={(event) => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  onDelete(planificacion)
+                }}
+              >
+                <Trash2 className="w-3.5 h-3.5 mr-1" />
+                Eliminar
+              </Button>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div>
+        <p className={cn('text-foreground font-semibold leading-tight', compact ? 'text-sm' : 'text-base')}>
+          {planificacion.titulo}
+        </p>
+        {planificacion.descripcion && (
+          <p className={cn('text-muted-foreground', compact ? 'text-xs mt-1' : 'text-sm mt-1')}>
+            {planificacion.descripcion}
+          </p>
+        )}
+      </div>
+
+      <div className={cn('flex flex-wrap gap-3 text-muted-foreground', compact ? 'text-xs' : 'text-sm')}>
+        <span className="inline-flex items-center gap-1.5">
+          <CalendarClock className="w-3.5 h-3.5" />
+          {formatPlanningRange(planificacion)}
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <Flag className="w-3.5 h-3.5" />
+          Comisión Directiva
+        </span>
+      </div>
+    </div>
+  )
+}
+
 export default function CalendarioPage() {
   const { user } = useAuth()
   const {
     reuniones,
+    planificaciones,
     sociosDisponibles,
     loading,
+    planningLoading,
     creating,
     updating,
+    creatingPlanning,
+    updatingPlanning,
+    deletingPlanning,
     calendarAvailable,
+    planningAvailable,
     canSchedule,
+    canCreatePlanning,
+    canEditPlanning,
+    canDeletePlanning,
+    canManagePlanning,
     retryCalendarCheck,
     crearReunion,
     actualizarReunion,
+    crearPlanificacion,
+    actualizarPlanificacion,
+    eliminarPlanificacion,
   } = useCalendario()
 
   const [selectedDate, setSelectedDate] = useState<Date>(new Date())
+  const [selectedPlanningDate, setSelectedPlanningDate] = useState<Date>(new Date())
   const [searchUsers, setSearchUsers] = useState('')
   const [form, setForm] = useState<MeetingFormState>(() => buildDefaultFormState())
+  const [planningForm, setPlanningForm] = useState<PlanningFormState>(() => buildDefaultPlanningFormState())
   const [involucrados, setInvolucrados] = useState<string[]>([])
   const [invitados, setInvitados] = useState<string[]>([])
   const [editingMeetingId, setEditingMeetingId] = useState<string | null>(null)
+  const [editingPlanningId, setEditingPlanningId] = useState<string | null>(null)
   const scheduleFormRef = useRef<HTMLDivElement | null>(null)
+  const planningFormRef = useRef<HTMLDivElement | null>(null)
   const titleInputRef = useRef<HTMLInputElement | null>(null)
+  const planningTitleInputRef = useRef<HTMLInputElement | null>(null)
   const savingMeeting = creating || updating
+  const savingPlanning = creatingPlanning || updatingPlanning || deletingPlanning
+  const planningSubmitDisabled = savingPlanning || (editingPlanningId ? !canEditPlanning : !canCreatePlanning)
 
   const reunionesDelDia = useMemo(() => {
     const selectedKey = dateKey(selectedDate)
@@ -331,6 +523,81 @@ export default function CalendarioPage() {
       )
     }).length
   }, [reuniones, user?.id])
+
+  const planificacionesOrdenadas = useMemo(
+    () => [...planificaciones].sort((a, b) => (
+      a.fecha_inicio.localeCompare(b.fecha_inicio) || a.titulo.localeCompare(b.titulo)
+    )),
+    [planificaciones]
+  )
+
+  const planificacionesDelDia = useMemo(() => {
+    const selectedKey = dateKey(selectedPlanningDate)
+    return planificacionesOrdenadas.filter((item) => (
+      item.fecha_inicio <= selectedKey && item.fecha_fin >= selectedKey
+    ))
+  }, [planificacionesOrdenadas, selectedPlanningDate])
+
+  const proximasPlanificaciones = useMemo(() => {
+    const todayKey = dateKey(new Date())
+    return planificacionesOrdenadas.filter((item) => item.fecha_fin >= todayKey)
+  }, [planificacionesOrdenadas])
+
+  const planificacionesTentativas = useMemo(
+    () => planificaciones.filter((item) => item.estado === 'tentativo').length,
+    [planificaciones]
+  )
+
+  const planificacionesDefinitivas = useMemo(
+    () => planificaciones.filter((item) => item.estado === 'definitivo').length,
+    [planificaciones]
+  )
+
+  const planificacionesMes = useMemo(() => {
+    const selectedMonth = selectedPlanningDate.getMonth()
+    const selectedYear = selectedPlanningDate.getFullYear()
+    return planificaciones.filter((item) => {
+      const start = parseDateOnly(item.fecha_inicio)
+      if (!start) return false
+      return start.getMonth() === selectedMonth && start.getFullYear() === selectedYear
+    }).length
+  }, [planificaciones, selectedPlanningDate])
+
+  const diasPlanificacion = useMemo(() => {
+    const dayStatus = new Map<string, CalendarioEstadoPlanificacion>()
+
+    for (const item of planificaciones) {
+      const inicio = parseDateOnly(item.fecha_inicio)
+      const fin = parseDateOnly(item.fecha_fin)
+      if (!inicio || !fin) continue
+
+      const cursor = new Date(inicio)
+      while (cursor.getTime() <= fin.getTime()) {
+        const key = dateKey(cursor)
+        const prev = dayStatus.get(key)
+        if (!prev || item.estado === 'definitivo') {
+          dayStatus.set(key, item.estado)
+        }
+        cursor.setDate(cursor.getDate() + 1)
+      }
+    }
+
+    const tentativas: Date[] = []
+    const definitivas: Date[] = []
+
+    for (const [key, status] of dayStatus.entries()) {
+      const parsed = parseDateOnly(key)
+      if (!parsed) continue
+
+      if (status === 'definitivo') {
+        definitivas.push(parsed)
+      } else {
+        tentativas.push(parsed)
+      }
+    }
+
+    return { tentativas, definitivas }
+  }, [planificaciones])
 
   const sociosFiltrados = useMemo(() => {
     const needle = searchUsers.trim().toLowerCase()
@@ -380,11 +647,25 @@ export default function CalendarioPage() {
     setEditingMeetingId(null)
   }
 
+  const resetPlanningForm = (baseDate: Date = selectedPlanningDate) => {
+    setPlanningForm(buildDefaultPlanningFormState(baseDate))
+    setEditingPlanningId(null)
+  }
+
   const focusScheduleForm = () => {
     window.requestAnimationFrame(() => {
       scheduleFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
       window.setTimeout(() => {
         titleInputRef.current?.focus()
+      }, 250)
+    })
+  }
+
+  const focusPlanningForm = () => {
+    window.requestAnimationFrame(() => {
+      planningFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      window.setTimeout(() => {
+        planningTitleInputRef.current?.focus()
       }, 250)
     })
   }
@@ -489,13 +770,115 @@ export default function CalendarioPage() {
     resetForm()
   }
 
+  const startEditingPlanning = (planificacion: PlanificacionCalendario) => {
+    setPlanningForm({
+      titulo: planificacion.titulo,
+      descripcion: planificacion.descripcion || '',
+      fechaInicio: planificacion.fecha_inicio,
+      fechaFin: planificacion.fecha_fin,
+      estado: planificacion.estado,
+    })
+    setEditingPlanningId(planificacion.id)
+    const startDate = parseDateOnly(planificacion.fecha_inicio)
+    if (startDate) {
+      setSelectedPlanningDate(startDate)
+    }
+    toast.success(`Editando fecha: ${planificacion.titulo}`)
+    focusPlanningForm()
+  }
+
+  const syncPlanningFormDateWithSelection = (day: Date) => {
+    if (!canCreatePlanning || editingPlanningId) return
+
+    const currentStart = parseDateOnly(planningForm.fechaInicio)
+    const currentEnd = parseDateOnly(planningForm.fechaFin)
+    const durationDays = (!currentStart || !currentEnd)
+      ? 0
+      : Math.max(0, Math.round((currentEnd.getTime() - currentStart.getTime()) / (24 * 60 * 60 * 1000)))
+
+    const mergedStart = new Date(day)
+    mergedStart.setHours(0, 0, 0, 0)
+
+    const mergedEnd = new Date(mergedStart)
+    mergedEnd.setDate(mergedEnd.getDate() + durationDays)
+
+    setPlanningForm((prev) => ({
+      ...prev,
+      fechaInicio: toDateInputValue(mergedStart),
+      fechaFin: toDateInputValue(mergedEnd),
+    }))
+  }
+
+  const submitPlanning = async () => {
+    if (editingPlanningId && !canEditPlanning) {
+      toast.error('No tienes permisos para editar fechas de planificación')
+      return
+    }
+
+    if (!editingPlanningId && !canCreatePlanning) {
+      toast.error('No tienes permisos para crear fechas de planificación')
+      return
+    }
+
+    const titulo = planningForm.titulo.trim()
+    if (!titulo) {
+      toast.error('Debes completar el título de la actividad')
+      return
+    }
+
+    const inicio = parseDateOnly(planningForm.fechaInicio)
+    const fin = parseDateOnly(planningForm.fechaFin)
+    if (!inicio || !fin) {
+      toast.error('Fechas inválidas')
+      return
+    }
+
+    if (fin.getTime() < inicio.getTime()) {
+      toast.error('La fecha de finalización debe ser igual o posterior al inicio')
+      return
+    }
+
+    const payloadBase = {
+      titulo,
+      descripcion: planningForm.descripcion.trim(),
+      fechaInicio: planningForm.fechaInicio,
+      fechaFin: planningForm.fechaFin,
+      estado: planningForm.estado,
+    }
+
+    if (editingPlanningId) {
+      await actualizarPlanificacion({
+        planificacionId: editingPlanningId,
+        ...payloadBase,
+      })
+    } else {
+      await crearPlanificacion(payloadBase)
+    }
+
+    setSelectedPlanningDate(new Date(inicio))
+    resetPlanningForm(new Date(inicio))
+  }
+
+  const handleDeletePlanning = async (planificacion: PlanificacionCalendario) => {
+    if (!canDeletePlanning) return
+    if (!window.confirm(`¿Eliminar la fecha "${planificacion.titulo}"? Esta acción no se puede deshacer.`)) {
+      return
+    }
+
+    await eliminarPlanificacion(planificacion.id)
+
+    if (editingPlanningId === planificacion.id) {
+      resetPlanningForm()
+    }
+  }
+
   if (!calendarAvailable) {
     return (
       <div className="space-y-6">
         <div className="flex flex-col gap-2">
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">Calendario</h1>
           <p className="text-sm text-muted-foreground">
-            Agenda institucional con reuniones, invitados e involucrados.
+            Agenda institucional con reuniones y planificación anual de actividades.
           </p>
         </div>
 
@@ -529,7 +912,7 @@ export default function CalendarioPage() {
       <div className="flex flex-col gap-2">
         <h1 className="text-2xl font-semibold tracking-tight text-foreground">Calendario</h1>
         <p className="text-sm text-muted-foreground">
-          Agenda institucional con reuniones, invitados e involucrados.
+          Agenda institucional con reuniones y planificación anual de actividades.
         </p>
       </div>
 
@@ -641,6 +1024,316 @@ export default function CalendarioPage() {
           </div>
         </CardContent>
       </Card>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card className="border-amber-200 bg-amber-50/40">
+          <CardHeader className="pb-2">
+            <CardDescription>Fechas tentativas</CardDescription>
+            <CardTitle className="text-2xl text-amber-900">{planificacionesTentativas}</CardTitle>
+          </CardHeader>
+          <CardContent className="text-xs text-amber-700">
+            Actividades de comisión sujetas a confirmación.
+          </CardContent>
+        </Card>
+
+        <Card className="border-emerald-200 bg-emerald-50/40">
+          <CardHeader className="pb-2">
+            <CardDescription>Fechas definitivas</CardDescription>
+            <CardTitle className="text-2xl text-emerald-900">{planificacionesDefinitivas}</CardTitle>
+          </CardHeader>
+          <CardContent className="text-xs text-emerald-700">
+            Actividades confirmadas para comunicar a socios.
+          </CardContent>
+        </Card>
+
+        <Card className="border-cyan-200 bg-cyan-50/40">
+          <CardHeader className="pb-2">
+            <CardDescription>Mes de planificación</CardDescription>
+            <CardTitle className="text-2xl text-cyan-900">{planificacionesMes}</CardTitle>
+          </CardHeader>
+          <CardContent className="text-xs text-cyan-700">
+            Fechas con inicio en el mes actualmente seleccionado.
+          </CardContent>
+        </Card>
+      </div>
+
+      {!planningAvailable ? (
+        <Card className="border-amber-300 bg-amber-50">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-amber-900">
+              <ShieldAlert className="w-5 h-5" />
+              Planificación anual no inicializada
+            </CardTitle>
+            <CardDescription className="text-amber-800">
+              Ejecuta la migración <code>035_calendar_planning_module.sql</code> para habilitar este espacio.
+            </CardDescription>
+            <div className="pt-2">
+              <Button
+                variant="outline"
+                className="border-amber-300 text-amber-900 hover:bg-amber-100"
+                onClick={retryCalendarCheck}
+              >
+                Reintentar validación
+              </Button>
+            </div>
+          </CardHeader>
+        </Card>
+      ) : (
+        <>
+          <Card className="border-border/80">
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <ListChecks className="w-5 h-5" />
+                Planificación anual de la comisión
+              </CardTitle>
+              <CardDescription>
+                Fechas tentativas y definitivas visibles para todos los socios en calendario y listado.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-4 sm:gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
+              <div className="rounded-xl border bg-card p-3">
+                <Calendar
+                  mode="single"
+                  selected={selectedPlanningDate}
+                  onSelect={(value) => {
+                    if (value) {
+                      setSelectedPlanningDate(value)
+                      syncPlanningFormDateWithSelection(value)
+                    }
+                  }}
+                  modifiers={{
+                    tentativa: diasPlanificacion.tentativas,
+                    definitiva: diasPlanificacion.definitivas,
+                  }}
+                  modifiersClassNames={{
+                    tentativa: 'bg-amber-100 text-amber-800 font-semibold rounded-md',
+                    definitiva: 'bg-emerald-100 text-emerald-800 font-semibold rounded-md',
+                  }}
+                  className="w-full p-0"
+                  classNames={{
+                    months: 'w-full',
+                    month: 'w-full space-y-3',
+                    caption: 'relative flex items-center justify-center py-2',
+                    caption_label: 'text-sm sm:text-base font-semibold',
+                    nav: 'absolute inset-x-0 top-2 flex items-center justify-between px-1 sm:px-2',
+                    nav_button: 'h-8 w-8 bg-transparent',
+                    table: 'w-full border-collapse',
+                    head_row: 'grid grid-cols-7',
+                    head_cell: 'text-center text-[10px] sm:text-xs font-semibold uppercase tracking-wide text-muted-foreground py-2',
+                    row: 'mt-1 grid grid-cols-7',
+                    cell: 'p-0 text-center',
+                    day: 'h-11 sm:h-14 w-full rounded-md text-xs sm:text-sm font-medium transition-colors hover:bg-muted',
+                    day_today: 'bg-muted text-foreground',
+                    day_selected: 'bg-[#6314a7] text-white hover:bg-[#6314a7]',
+                    day_outside: 'text-muted-foreground opacity-40',
+                  }}
+                />
+              </div>
+
+              <div className="space-y-3">
+                <div className="rounded-xl border bg-muted/20 p-4">
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Día seleccionado</p>
+                  <p className="mt-1 text-base font-semibold text-foreground">
+                    {selectedPlanningDate.toLocaleDateString('es-AR', {
+                      weekday: 'long',
+                      day: 'numeric',
+                      month: 'long',
+                    })}
+                  </p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    {planificacionesDelDia.length} actividad/es
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                  <Badge variant="outline" className={cn('font-medium', PLANIFICACION_ESTADO_BADGES.tentativo)}>
+                    Tentativa
+                  </Badge>
+                  <Badge variant="outline" className={cn('font-medium', PLANIFICACION_ESTADO_BADGES.definitivo)}>
+                    Definitiva
+                  </Badge>
+                </div>
+
+                {planningLoading ? (
+                  <p className="text-sm text-muted-foreground">Cargando planificación...</p>
+                ) : planificacionesDelDia.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No hay actividades de comisión para este día.</p>
+                ) : (
+                  <ScrollArea className="h-[300px] sm:h-[430px] pr-3">
+                    <div className="space-y-2">
+                      {planificacionesDelDia.map((planificacion) => (
+                        <PlanificacionCard
+                          key={`day-plan-${planificacion.id}`}
+                          planificacion={planificacion}
+                          compact
+                          canEdit={canEditPlanning}
+                          canDelete={canDeletePlanning}
+                          onEdit={startEditingPlanning}
+                          onDelete={(item) => { void handleDeletePlanning(item) }}
+                        />
+                      ))}
+                    </div>
+                  </ScrollArea>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Fechas de comisión</CardTitle>
+              <CardDescription>
+                Listado de próximas actividades para seguimiento institucional de socios.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {planningLoading ? (
+                <p className="text-sm text-muted-foreground">Cargando listado de planificación...</p>
+              ) : proximasPlanificaciones.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No hay actividades de comisión planificadas.</p>
+              ) : (
+                <div className="space-y-3">
+                  {proximasPlanificaciones.map((planificacion) => (
+                    <PlanificacionCard
+                      key={`upcoming-plan-${planificacion.id}`}
+                      planificacion={planificacion}
+                      canEdit={canEditPlanning}
+                      canDelete={canDeletePlanning}
+                      onEdit={startEditingPlanning}
+                      onDelete={(item) => { void handleDeletePlanning(item) }}
+                    />
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {canManagePlanning ? (
+            <Card ref={planningFormRef} className="border border-cyan-200/70">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-cyan-900">
+                  <Flag className="w-5 h-5" />
+                  {editingPlanningId ? 'Editar fecha de planificación' : 'Nueva fecha de planificación'}
+                </CardTitle>
+                <CardDescription>
+                  {editingPlanningId
+                    ? 'Actualiza estado y rango de fechas de una actividad de comisión.'
+                    : 'Por defecto solo Comisión Directiva puede cargar fechas. Puedes habilitar otros roles desde Ajustes > Roles > Permisos del módulo Calendario.'}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-5">
+                {!editingPlanningId && !canCreatePlanning && (
+                  <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3 text-sm text-cyan-800">
+                    Tu rol puede editar o eliminar fechas existentes, pero no crear nuevas.
+                  </div>
+                )}
+
+                <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px]">
+                  <div className="space-y-2">
+                    <Label htmlFor="titulo-planificacion">Actividad</Label>
+                    <Input
+                      id="titulo-planificacion"
+                      ref={planningTitleInputRef}
+                      placeholder="Ej.: Jornada de liderazgo violeta"
+                      value={planningForm.titulo}
+                      onChange={(e) => setPlanningForm((prev) => ({ ...prev, titulo: e.target.value }))}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="estado-planificacion">Estado</Label>
+                    <Select
+                      value={planningForm.estado}
+                      onValueChange={(value) => setPlanningForm((prev) => ({
+                        ...prev,
+                        estado: value as CalendarioEstadoPlanificacion,
+                      }))}
+                    >
+                      <SelectTrigger id="estado-planificacion">
+                        <SelectValue placeholder="Seleccionar estado" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="tentativo">Tentativa</SelectItem>
+                        <SelectItem value="definitivo">Definitiva</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="descripcion-planificacion">Descripción</Label>
+                  <Textarea
+                    id="descripcion-planificacion"
+                    rows={3}
+                    placeholder="Objetivo, observaciones o notas de seguimiento."
+                    value={planningForm.descripcion}
+                    onChange={(e) => setPlanningForm((prev) => ({ ...prev, descripcion: e.target.value }))}
+                  />
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="inicio-planificacion">Fecha de inicio</Label>
+                    <Input
+                      id="inicio-planificacion"
+                      type="date"
+                      value={planningForm.fechaInicio}
+                      onChange={(e) => {
+                        const value = e.target.value
+                        setPlanningForm((prev) => ({ ...prev, fechaInicio: value }))
+                        const parsed = parseDateOnly(value)
+                        if (parsed) {
+                          setSelectedPlanningDate(parsed)
+                        }
+                      }}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="fin-planificacion">Fecha de finalización</Label>
+                    <Input
+                      id="fin-planificacion"
+                      type="date"
+                      value={planningForm.fechaFin}
+                      onChange={(e) => setPlanningForm((prev) => ({ ...prev, fechaFin: e.target.value }))}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    onClick={() => void submitPlanning()}
+                    disabled={planningSubmitDisabled}
+                    className="bg-cyan-700 hover:bg-cyan-800 text-white"
+                  >
+                    {savingPlanning
+                      ? (editingPlanningId ? 'Guardando cambios...' : 'Guardando fecha...')
+                      : (editingPlanningId ? 'Guardar cambios' : 'Guardar fecha')}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => resetPlanningForm()}
+                    disabled={savingPlanning}
+                  >
+                    {editingPlanningId ? 'Cancelar edición' : 'Limpiar'}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card className="border-amber-200 bg-amber-50/40">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-amber-900">
+                  <ShieldAlert className="w-5 h-5" />
+                  Edición de planificación restringida
+                </CardTitle>
+                <CardDescription className="text-amber-700">
+                  Solo la Comisión Directiva puede crear, editar o eliminar fechas de planificación.
+                </CardDescription>
+              </CardHeader>
+            </Card>
+          )}
+        </>
+      )}
 
       <Card>
         <CardHeader>

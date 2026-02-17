@@ -6,6 +6,8 @@ import { runWithRecovery } from '@/lib/async-recovery'
 import { useResumeRefresh } from '@/hooks/useResumeRefresh'
 import type {
   CalendarioAlcanceReunion,
+  CalendarioEstadoPlanificacion,
+  PlanificacionCalendario,
   ReunionCalendario,
   ReunionCalendarioParticipante,
   SocioCalendario,
@@ -45,6 +47,18 @@ export interface CrearReunionPayload {
 
 export interface ActualizarReunionPayload extends CrearReunionPayload {
   reunionId: string
+}
+
+export interface CrearPlanificacionPayload {
+  titulo: string
+  descripcion?: string
+  fechaInicio: string
+  fechaFin: string
+  estado: CalendarioEstadoPlanificacion
+}
+
+export interface ActualizarPlanificacionPayload extends CrearPlanificacionPayload {
+  planificacionId: string
 }
 
 function normalizeSocio(row: SocioCalendarioRow): SocioCalendario {
@@ -110,22 +124,53 @@ function isCalendarRlsRecursion(error: unknown): boolean {
   )
 }
 
+function isPlanningSchemaMissing(error: unknown): boolean {
+  const maybe = (typeof error === 'object' && error ? error as SupabaseErrorLike : null)
+  const code = (maybe?.code || '').toUpperCase()
+
+  if (code === 'PGRST205' || code === '42P01') {
+    return true
+  }
+
+  const details = toErrorDetails(error).toLowerCase()
+  if (!details) return false
+
+  return (
+    details.includes("could not find the table 'public.planificaciones_calendario'") ||
+    details.includes('relation "planificaciones_calendario" does not exist') ||
+    details.includes('type "calendario_estado_planificacion" does not exist')
+  )
+}
+
 export function useCalendario() {
   const { user, hasPermission } = useAuth()
   const userId = user?.id
   const [reuniones, setReuniones] = useState<ReunionCalendario[]>([])
+  const [planificaciones, setPlanificaciones] = useState<PlanificacionCalendario[]>([])
   const [sociosDisponibles, setSociosDisponibles] = useState<SocioCalendario[]>([])
   const [loading, setLoading] = useState(true)
+  const [planningLoading, setPlanningLoading] = useState(true)
   const [creating, setCreating] = useState(false)
   const [updating, setUpdating] = useState(false)
+  const [creatingPlanning, setCreatingPlanning] = useState(false)
+  const [updatingPlanning, setUpdatingPlanning] = useState(false)
+  const [deletingPlanning, setDeletingPlanning] = useState(false)
   const [calendarAvailable, setCalendarAvailable] = useState(true)
+  const [planningAvailable, setPlanningAvailable] = useState(true)
   const missingSchemaNotifiedRef = useRef(false)
+  const missingPlanningSchemaNotifiedRef = useRef(false)
 
   const canSchedule = hasPermission('calendario', 'crear')
+  const canCreatePlanning = hasPermission('calendario', 'crear')
+  const canEditPlanning = hasPermission('calendario', 'editar')
+  const canDeletePlanning = hasPermission('calendario', 'eliminar')
+  const canManagePlanning = canCreatePlanning || canEditPlanning || canDeletePlanning
 
   const retryCalendarCheck = useCallback(() => {
     setCalendarAvailable(true)
+    setPlanningAvailable(true)
     missingSchemaNotifiedRef.current = false
+    missingPlanningSchemaNotifiedRef.current = false
   }, [])
 
   const fetchReuniones = useCallback(async () => {
@@ -239,6 +284,51 @@ export function useCalendario() {
     }
   }, [calendarAvailable, userId])
 
+  const fetchPlanificaciones = useCallback(async () => {
+    if (!userId || !planningAvailable) {
+      setPlanificaciones([])
+      setPlanningLoading(false)
+      return
+    }
+
+    setPlanningLoading(true)
+    try {
+      const { data, error } = await runWithRecovery(
+        () => supabase
+          .from('planificaciones_calendario')
+          .select('*')
+          .order('fecha_inicio', { ascending: true })
+          .order('created_at', { ascending: true }),
+        { label: 'calendario planificaciones' }
+      )
+
+      if (error) throw error
+
+      setPlanificaciones((data || []) as PlanificacionCalendario[])
+    } catch (error) {
+      if (isPlanningSchemaMissing(error)) {
+        setPlanningAvailable(false)
+        setPlanificaciones([])
+
+        if (!missingPlanningSchemaNotifiedRef.current) {
+          missingPlanningSchemaNotifiedRef.current = true
+          toast.error('Planificación anual no habilitada. Ejecuta la migración 035_calendar_planning_module.sql.')
+        }
+
+        console.warn('Calendar planning module unavailable:', {
+          raw: error,
+          parsed: toErrorDetails(error),
+        })
+        return
+      }
+
+      console.error('Error fetching calendar planning:', toErrorDetails(error))
+      toast.error('No se pudo cargar la planificación anual')
+    } finally {
+      setPlanningLoading(false)
+    }
+  }, [planningAvailable, userId])
+
   const fetchSociosDisponibles = useCallback(async () => {
     if (!canSchedule || !calendarAvailable) {
       setSociosDisponibles([])
@@ -270,39 +360,61 @@ export function useCalendario() {
   }, [fetchReuniones])
 
   useEffect(() => {
+    void fetchPlanificaciones()
+  }, [fetchPlanificaciones])
+
+  useEffect(() => {
     void fetchSociosDisponibles()
   }, [fetchSociosDisponibles])
 
   useResumeRefresh(() => {
-    if (!calendarAvailable) return
-    void fetchReuniones()
+    if (calendarAvailable) {
+      void fetchReuniones()
+    }
+    if (planningAvailable) {
+      void fetchPlanificaciones()
+    }
   }, { throttleMs: 5_000 })
 
   useEffect(() => {
-    if (!userId || !calendarAvailable) return
+    if (!userId || (!calendarAvailable && !planningAvailable)) return
 
-    const channel = supabase
-      .channel(`calendar-realtime-${userId}`)
-      .on(
+    const channel = supabase.channel(`calendar-realtime-${userId}`)
+
+    if (calendarAvailable) {
+      channel
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'reuniones_calendario' },
+          () => {
+            void fetchReuniones()
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'reuniones_calendario_participantes' },
+          () => {
+            void fetchReuniones()
+          }
+        )
+    }
+
+    if (planningAvailable) {
+      channel.on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'reuniones_calendario' },
+        { event: '*', schema: 'public', table: 'planificaciones_calendario' },
         () => {
-          void fetchReuniones()
+          void fetchPlanificaciones()
         }
       )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'reuniones_calendario_participantes' },
-        () => {
-          void fetchReuniones()
-        }
-      )
-      .subscribe()
+    }
+
+    channel.subscribe()
 
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [calendarAvailable, userId, fetchReuniones])
+  }, [calendarAvailable, planningAvailable, userId, fetchReuniones, fetchPlanificaciones])
 
   const crearReunion = useCallback(async (payload: CrearReunionPayload) => {
     if (!calendarAvailable) {
@@ -397,17 +509,147 @@ export function useCalendario() {
     }
   }, [calendarAvailable, canSchedule, fetchReuniones])
 
+  const crearPlanificacion = useCallback(async (payload: CrearPlanificacionPayload) => {
+    if (!planningAvailable) {
+      const err = new Error('Planificación anual no habilitada. Ejecuta la migración 035_calendar_planning_module.sql.')
+      toast.error(err.message)
+      throw err
+    }
+
+    if (!canCreatePlanning) {
+      const err = new Error('No tienes permisos para crear fechas de planificación')
+      toast.error(err.message)
+      throw err
+    }
+
+    try {
+      setCreatingPlanning(true)
+      const { data, error } = await supabase
+        .from('planificaciones_calendario')
+        .insert({
+          titulo: payload.titulo.trim(),
+          descripcion: payload.descripcion?.trim() || null,
+          fecha_inicio: payload.fechaInicio,
+          fecha_fin: payload.fechaFin,
+          estado: payload.estado,
+        })
+        .select('*')
+        .single()
+
+      if (error) throw error
+
+      toast.success('Fecha de planificación creada')
+      await fetchPlanificaciones()
+      return data as PlanificacionCalendario
+    } catch (error) {
+      console.error('Error creating planning date:', toErrorDetails(error))
+      toast.error(toErrorDetails(error) || 'No se pudo crear la fecha de planificación')
+      throw error
+    } finally {
+      setCreatingPlanning(false)
+    }
+  }, [canCreatePlanning, fetchPlanificaciones, planningAvailable])
+
+  const actualizarPlanificacion = useCallback(async (payload: ActualizarPlanificacionPayload) => {
+    if (!planningAvailable) {
+      const err = new Error('Planificación anual no habilitada. Ejecuta la migración 035_calendar_planning_module.sql.')
+      toast.error(err.message)
+      throw err
+    }
+
+    if (!canEditPlanning) {
+      const err = new Error('No tienes permisos para editar fechas de planificación')
+      toast.error(err.message)
+      throw err
+    }
+
+    try {
+      setUpdatingPlanning(true)
+      const { data, error } = await supabase
+        .from('planificaciones_calendario')
+        .update({
+          titulo: payload.titulo.trim(),
+          descripcion: payload.descripcion?.trim() || null,
+          fecha_inicio: payload.fechaInicio,
+          fecha_fin: payload.fechaFin,
+          estado: payload.estado,
+        })
+        .eq('id', payload.planificacionId)
+        .select('*')
+        .single()
+
+      if (error) throw error
+
+      toast.success('Fecha de planificación actualizada')
+      await fetchPlanificaciones()
+      return data as PlanificacionCalendario
+    } catch (error) {
+      console.error('Error updating planning date:', toErrorDetails(error))
+      toast.error(toErrorDetails(error) || 'No se pudo actualizar la fecha de planificación')
+      throw error
+    } finally {
+      setUpdatingPlanning(false)
+    }
+  }, [canEditPlanning, fetchPlanificaciones, planningAvailable])
+
+  const eliminarPlanificacion = useCallback(async (planificacionId: string) => {
+    if (!planningAvailable) {
+      const err = new Error('Planificación anual no habilitada. Ejecuta la migración 035_calendar_planning_module.sql.')
+      toast.error(err.message)
+      throw err
+    }
+
+    if (!canDeletePlanning) {
+      const err = new Error('No tienes permisos para eliminar fechas de planificación')
+      toast.error(err.message)
+      throw err
+    }
+
+    try {
+      setDeletingPlanning(true)
+      const { error } = await supabase
+        .from('planificaciones_calendario')
+        .delete()
+        .eq('id', planificacionId)
+
+      if (error) throw error
+
+      toast.success('Fecha de planificación eliminada')
+      await fetchPlanificaciones()
+    } catch (error) {
+      console.error('Error deleting planning date:', toErrorDetails(error))
+      toast.error(toErrorDetails(error) || 'No se pudo eliminar la fecha de planificación')
+      throw error
+    } finally {
+      setDeletingPlanning(false)
+    }
+  }, [canDeletePlanning, fetchPlanificaciones, planningAvailable])
+
   return {
     reuniones,
+    planificaciones,
     sociosDisponibles,
     loading,
+    planningLoading,
     creating,
     updating,
+    creatingPlanning,
+    updatingPlanning,
+    deletingPlanning,
     calendarAvailable,
+    planningAvailable,
     canSchedule,
+    canCreatePlanning,
+    canEditPlanning,
+    canDeletePlanning,
+    canManagePlanning,
     retryCalendarCheck,
     fetchReuniones,
+    fetchPlanificaciones,
     crearReunion,
     actualizarReunion,
+    crearPlanificacion,
+    actualizarPlanificacion,
+    eliminarPlanificacion,
   }
 }
