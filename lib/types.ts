@@ -404,10 +404,14 @@ export interface FilterParams {
 // Tipos para permisos
 export type Recurso =
   | 'dashboard'
+  | 'calendario'
+  | 'tareas'
   | 'socios'
   | 'deudas'
+  | 'movimientos'
   | 'finanzas'
   | 'tesoreria'
+  | 'reintegros'
   | 'documentos'
   | 'configuracion'
   | 'estatuto'

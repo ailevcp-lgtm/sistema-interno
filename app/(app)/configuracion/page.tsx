@@ -1,7 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import {
   Users,
   Wallet,
@@ -10,17 +9,15 @@ import {
   Loader2,
   Save,
   Search,
-  MoreHorizontal,
-  ChevronDown,
 } from 'lucide-react'
 import { cn, formatARS, formatDateTime } from '@/lib/utils'
-import { useAuth, useRequirePermission } from '@/hooks/useAuth'
+import { useRequirePermission } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
 import {
   ROL_LABELS,
   ROL_COLORS,
-  DEFAULT_CATEGORIAS_INGRESOS,
-  DEFAULT_CATEGORIAS_EGRESOS,
+  COMISION_DIRECTIVA_ROLES_AILE,
+  normalizeInstitutionalRole,
 } from '@/lib/constants'
 import type { Rol, Usuario, CategoriaFinanciera, LogActividad } from '@/lib/types'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -54,15 +51,12 @@ import { Badge } from '@/components/ui/badge'
 import { toast } from 'sonner'
 
 import { RolesManager } from '@/components/aile/roles-manager'
+import { RoleSimulationPanel } from '@/components/aile/role-simulation-panel'
 import { runWithRecovery } from '@/lib/async-recovery'
 import { useResumeRefresh } from '@/hooks/useResumeRefresh'
 
 export default function ConfiguracionPage() {
-  const router = useRouter()
-  const { hasPermission } = useAuth()
-
-  // Redirect if not admin
-  useRequirePermission('configuracion', 'ver', '/dashboard')
+  useRequirePermission('configuracion', 'ver', '/dashboard', { useActualPermission: true })
 
   return (
     <div className="space-y-6">
@@ -106,6 +100,7 @@ export default function ConfiguracionPage() {
         </TabsList>
 
         <TabsContent value="roles" className="space-y-6">
+          <RoleSimulationPanel />
           <RolesManager />
           <RolesTab />
         </TabsContent>
@@ -127,6 +122,10 @@ export default function ConfiguracionPage() {
 import { useRoles } from '@/hooks/useRoles'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
+const COMISION_DIRECTIVA_ROLE_SET = new Set(
+  COMISION_DIRECTIVA_ROLES_AILE.map((roleName) => normalizeInstitutionalRole(roleName))
+)
+
 function RolesTab() {
   const [usuarios, setUsuarios] = useState<Usuario[]>([])
   const [loading, setLoading] = useState(true)
@@ -137,7 +136,37 @@ function RolesTab() {
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
 
-  const { roles: rolesAile, loading: loadingRoles } = useRoles()
+  const { roles: rolesAile } = useRoles()
+  const isComisionDirectivaRole = newRole === 'comision_directiva'
+
+  const availableRolesAile = useMemo(
+    () => rolesAile.filter((role) => (
+      isComisionDirectivaRole
+        ? COMISION_DIRECTIVA_ROLE_SET.has(normalizeInstitutionalRole(role.nombre))
+        : !COMISION_DIRECTIVA_ROLE_SET.has(normalizeInstitutionalRole(role.nombre))
+    )),
+    [isComisionDirectivaRole, rolesAile]
+  )
+
+  useEffect(() => {
+    if (!newRoleAileId) return
+
+    const selectedRole = rolesAile.find((role) => role.id === newRoleAileId)
+    if (!selectedRole) return
+
+    const isComisionDirectivaCargo = COMISION_DIRECTIVA_ROLE_SET.has(
+      normalizeInstitutionalRole(selectedRole.nombre)
+    )
+
+    if (isComisionDirectivaRole && !isComisionDirectivaCargo) {
+      setNewRoleAileId('')
+      return
+    }
+
+    if (!isComisionDirectivaRole && isComisionDirectivaCargo) {
+      setNewRoleAileId('')
+    }
+  }, [isComisionDirectivaRole, newRoleAileId, rolesAile])
 
   const fetchUsuarios = useCallback(async () => {
     try {
@@ -184,12 +213,24 @@ function RolesTab() {
 
   const handleRoleChange = async () => {
     if (!selectedUser) return
+    const selectedRoleDef = rolesAile.find(r => r.id === newRoleAileId)
+    const selectedRoleName = selectedRoleDef?.nombre || null
+    const isComisionDirectivaCargo = selectedRoleName
+      ? COMISION_DIRECTIVA_ROLE_SET.has(normalizeInstitutionalRole(selectedRoleName))
+      : false
+
+    if (newRole === 'comision_directiva' && !isComisionDirectivaCargo) {
+      toast.error('Si el rol del sistema es Comisión Directiva, el cargo AILE debe ser Presidente, Tesorero, Secretario General o Vocal Titular.')
+      return
+    }
+
+    if (newRole !== 'comision_directiva' && isComisionDirectivaCargo) {
+      toast.error('Los cargos de Comisión Directiva solo se pueden asignar cuando el nivel de permisos es Comisión Directiva.')
+      return
+    }
 
     setIsSaving(true)
     try {
-      // Find the selected role definition to get the name
-      const selectedRoleDef = rolesAile.find(r => r.id === newRoleAileId)
-
       const { error } = await supabase
         .from('socios')
         .update({
@@ -331,8 +372,8 @@ function RolesTab() {
                     <SelectValue placeholder="Seleccionar rol institucional" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">Sin rol específico</SelectItem>
-                    {rolesAile.map((rol) => (
+                    <SelectItem value="none" disabled={isComisionDirectivaRole}>Sin rol específico</SelectItem>
+                    {availableRolesAile.map((rol) => (
                       <SelectItem key={rol.id} value={rol.id}>
                         {rol.nombre}
                       </SelectItem>
@@ -340,7 +381,9 @@ function RolesTab() {
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
-                  Este es el cargo que ocupa en la organización (ej. Presidente, Vocal).
+                  {isComisionDirectivaRole
+                    ? 'Para Comisión Directiva solo se permiten: Presidente, Tesorero, Secretario General o Vocal Titular.'
+                    : 'Este es el cargo que ocupa en la organización (ej. Director de Comunicación).'}
                 </p>
               </div>
 

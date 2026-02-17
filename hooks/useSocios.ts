@@ -19,7 +19,7 @@ interface SociosFilters {
   page: number
 }
 
-export function useSocios() {
+export function useSocios(enabled: boolean = true) {
   const [socios, setSocios] = useState<Socio[]>([])
   const [loading, setLoading] = useState(true)
   const [filters, setFilters] = useState<SociosFilters>({
@@ -34,6 +34,12 @@ export function useSocios() {
   const pageSize = 15
 
   const fetchSocios = useCallback(async () => {
+    if (!enabled) {
+      setSocios([])
+      setLoading(false)
+      return
+    }
+
     try {
       setLoading(true)
       const { data, error } = await runWithRecovery(() => supabase
@@ -61,12 +67,15 @@ export function useSocios() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [enabled])
 
   useEffect(() => {
     void fetchSocios()
   }, [fetchSocios])
-  useResumeRefresh(() => { void fetchSocios() }, { throttleMs: 5_000 })
+  useResumeRefresh(() => {
+    if (!enabled) return
+    void fetchSocios()
+  }, { throttleMs: 5_000 })
 
   const filtered = useMemo(() => {
     let result = [...socios]

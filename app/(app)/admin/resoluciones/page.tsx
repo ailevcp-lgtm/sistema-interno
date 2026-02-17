@@ -18,8 +18,11 @@ import { Plus, Pencil, Trash2, ArrowLeft } from "lucide-react"
 import { toast } from "sonner"
 import type { Resolucion, TipoResolucion } from "@/lib/types"
 import { useResumeRefresh } from "@/hooks/useResumeRefresh"
+import { useRequirePermission } from "@/hooks/useAuth"
 
 export default function AdminResolucionesPage() {
+    const { loading: checkingPermission, hasPermission } = useRequirePermission("documentos", "crear", "/documentos")
+
     const [mode, setMode] = useState<"list" | "edit" | "create">("list")
     const [selectedRes, setSelectedRes] = useState<Resolucion | undefined>(undefined)
     const [resoluciones, setResoluciones] = useState<Resolucion[]>([])
@@ -74,6 +77,18 @@ export default function AdminResolucionesPage() {
             console.error(error)
             // Toast already handled in hook
         }
+    }
+
+    if (checkingPermission) {
+        return (
+            <div className="flex items-center justify-center py-20 text-muted-foreground">
+                Validando permisos...
+            </div>
+        )
+    }
+
+    if (!hasPermission) {
+        return null
     }
 
     if (mode === "edit" || mode === "create") {

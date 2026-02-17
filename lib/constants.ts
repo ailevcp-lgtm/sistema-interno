@@ -21,6 +21,52 @@ export const COLORS = {
   cream: '#e7d0f1',
 }
 
+export const PERMISSION_RESOURCES: Recurso[] = [
+  'dashboard',
+  'calendario',
+  'tareas',
+  'socios',
+  'deudas',
+  'movimientos',
+  'finanzas',
+  'tesoreria',
+  'reintegros',
+  'documentos',
+  'configuracion',
+  'estatuto',
+  'resoluciones',
+  'balances',
+  'logs',
+]
+
+export const PERMISSION_ACTIONS: Accion[] = ['ver', 'crear', 'editar', 'eliminar', 'aprobar']
+
+export const RECURSO_LABELS: Record<Recurso, string> = {
+  dashboard: 'Inicio',
+  calendario: 'Calendario',
+  tareas: 'Tareas',
+  socios: 'Socios',
+  deudas: 'Deudas',
+  movimientos: 'Movimientos',
+  finanzas: 'Finanzas',
+  tesoreria: 'Tesoreria',
+  reintegros: 'Reintegros',
+  documentos: 'Documentos',
+  configuracion: 'Ajustes',
+  estatuto: 'Estatuto',
+  resoluciones: 'Resoluciones',
+  balances: 'Balances',
+  logs: 'Logs',
+}
+
+export const ACCION_LABELS: Record<Accion, string> = {
+  ver: 'Ver',
+  crear: 'Crear',
+  editar: 'Editar',
+  eliminar: 'Eliminar',
+  aprobar: 'Aprobar',
+}
+
 // Navegación principal
 export const NAV_ITEMS: NavItem[] = [
   { href: '/dashboard', label: 'Inicio', icon: 'Home' },
@@ -87,16 +133,24 @@ export const ROLES_AILE = [
 
 export const REINTEGROS_ALLOWED_ROLES_AILE = [
   'Director de Finanzas',
+  'Miembro de Finanzas',
   'Tesorero',
   'Presidente',
   'Secretario General',
 ] as const
 
+export const COMISION_DIRECTIVA_ROLES_AILE = [
+  'Presidente',
+  'Tesorero',
+  'Secretario General',
+  'Vocal Titular',
+] as const
+
 export function canAccessReintegrosModule(rol: Rol, rolAile?: string | null): boolean {
-  if (rol === 'admin') return true
+  if (isGlobalManager(rol, rolAile)) return true
   if (!rolAile) return false
   return REINTEGROS_ALLOWED_ROLES_AILE.some(
-    (allowed) => allowed.toLowerCase() === rolAile.toLowerCase()
+    (allowed) => normalizeInstitutionalRole(allowed) === normalizeInstitutionalRole(rolAile)
   )
 }
 
@@ -119,7 +173,90 @@ export const DEFAULT_CATEGORIAS_EGRESOS = [
   'Otros egresos',
 ]
 
-// Matriz de permisos
+const INSTITUTIONAL_GLOBAL_MANAGER_ROLES = new Set(
+  COMISION_DIRECTIVA_ROLES_AILE.map((roleName) => normalizeInstitutionalRole(roleName))
+)
+
+const FINANZAS_ROLE_ALIASES = [
+  'director de finanzas',
+  'directora de finanzas',
+  'miembro de finanzas',
+  'tesorero',
+]
+
+const RRHH_ROLE_ALIASES = [
+  'director de rrhh',
+  'directora de rrhh',
+  'director de recursos humanos',
+  'directora de recursos humanos',
+  'miembro de rrhh',
+  'miembro de recursos humanos',
+]
+
+type PermissionOverrides = Partial<Record<Recurso, Accion[]>>
+type PermissionActionOverrides = Partial<Record<Accion, boolean>>
+type PermissionResourceOverrides = Partial<Record<Recurso, PermissionActionOverrides>>
+
+export type RolePermissionOverridesMap = Partial<Record<string, PermissionResourceOverrides>>
+
+const INSTITUTIONAL_ROLE_OVERRIDES: Record<string, PermissionOverrides> = {}
+
+for (const roleName of RRHH_ROLE_ALIASES) {
+  INSTITUTIONAL_ROLE_OVERRIDES[roleName] = {
+    socios: ['ver', 'editar'],
+  }
+}
+
+for (const roleName of FINANZAS_ROLE_ALIASES) {
+  INSTITUTIONAL_ROLE_OVERRIDES[roleName] = {
+    deudas: ['ver', 'editar'],
+    finanzas: ['ver'],
+    tesoreria: ['ver'],
+    reintegros: ['ver', 'crear'],
+  }
+}
+
+export function normalizeInstitutionalRole(value?: string | null): string {
+  return (value || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function hasInstitutionalOverride(
+  recurso: Recurso,
+  accion: Accion,
+  rolAile?: string | null
+): boolean {
+  const normalizedRole = normalizeInstitutionalRole(rolAile)
+  if (!normalizedRole) return false
+
+  const overrides = INSTITUTIONAL_ROLE_OVERRIDES[normalizedRole]
+  if (!overrides) return false
+
+  return overrides[recurso]?.includes(accion) ?? false
+}
+
+function getDynamicInstitutionalOverride(
+  recurso: Recurso,
+  accion: Accion,
+  rolAile?: string | null,
+  roleOverrides?: RolePermissionOverridesMap
+): boolean | undefined {
+  if (!roleOverrides) return undefined
+  const normalizedRole = normalizeInstitutionalRole(rolAile)
+  if (!normalizedRole) return undefined
+  return roleOverrides[normalizedRole]?.[recurso]?.[accion]
+}
+
+export function isGlobalManager(rol: Rol, rolAile?: string | null): boolean {
+  if (rol === 'admin' || rol === 'comision_directiva') return true
+  return INSTITUTIONAL_GLOBAL_MANAGER_ROLES.has(normalizeInstitutionalRole(rolAile))
+}
+
+// Matriz de permisos base (global managers se resuelven en hasPermission)
 export const PERMISSIONS: Record<Recurso, Record<Accion, Rol[]>> = {
   dashboard: {
     ver: ['socio', 'comision_directiva', 'revisor_cuentas', 'admin'],
@@ -128,14 +265,35 @@ export const PERMISSIONS: Record<Recurso, Record<Accion, Rol[]>> = {
     eliminar: [],
     aprobar: [],
   },
-  socios: {
+  calendario: {
     ver: ['socio', 'comision_directiva', 'revisor_cuentas', 'admin'],
+    crear: ['comision_directiva', 'admin'],
+    editar: ['comision_directiva', 'admin'],
+    eliminar: ['comision_directiva', 'admin'],
+    aprobar: [],
+  },
+  tareas: {
+    ver: ['socio', 'comision_directiva', 'revisor_cuentas', 'admin'],
+    crear: [],
+    editar: [],
+    eliminar: [],
+    aprobar: [],
+  },
+  socios: {
+    ver: ['comision_directiva', 'revisor_cuentas', 'admin'],
     crear: ['comision_directiva', 'admin'],
     editar: ['comision_directiva', 'admin'],
     eliminar: ['admin'],
     aprobar: [],
   },
   deudas: {
+    ver: ['comision_directiva', 'revisor_cuentas', 'admin'],
+    crear: ['comision_directiva', 'admin'],
+    editar: ['comision_directiva', 'admin'],
+    eliminar: ['admin'],
+    aprobar: [],
+  },
+  movimientos: {
     ver: ['socio', 'comision_directiva', 'revisor_cuentas', 'admin'],
     crear: ['comision_directiva', 'admin'],
     editar: ['comision_directiva', 'admin'],
@@ -156,8 +314,15 @@ export const PERMISSIONS: Record<Recurso, Record<Accion, Rol[]>> = {
     eliminar: ['admin'],
     aprobar: [],
   },
+  reintegros: {
+    ver: ['comision_directiva', 'admin'],
+    crear: ['comision_directiva', 'admin'],
+    editar: ['comision_directiva', 'admin'],
+    eliminar: ['admin'],
+    aprobar: ['comision_directiva', 'admin'],
+  },
   documentos: {
-    ver: ['socio', 'comision_directiva', 'revisor_cuentas', 'admin'],
+    ver: ['comision_directiva', 'revisor_cuentas', 'admin'],
     crear: ['comision_directiva', 'admin'],
     editar: ['comision_directiva', 'admin'],
     eliminar: ['admin'],
@@ -171,28 +336,28 @@ export const PERMISSIONS: Record<Recurso, Record<Accion, Rol[]>> = {
     aprobar: [],
   },
   estatuto: {
-    ver: ['socio', 'comision_directiva', 'revisor_cuentas', 'admin'],
+    ver: ['comision_directiva', 'revisor_cuentas', 'admin'],
     crear: [],
     editar: ['admin'],
     eliminar: [],
     aprobar: [],
   },
   resoluciones: {
-    ver: ['socio', 'comision_directiva', 'revisor_cuentas', 'admin'],
+    ver: ['comision_directiva', 'revisor_cuentas', 'admin'],
     crear: ['comision_directiva', 'admin'],
     editar: ['comision_directiva', 'admin'],
     eliminar: ['admin'],
     aprobar: [],
   },
   balances: {
-    ver: ['socio', 'comision_directiva', 'revisor_cuentas', 'admin'],
+    ver: ['comision_directiva', 'revisor_cuentas', 'admin'],
     crear: ['comision_directiva', 'admin'],
     editar: ['comision_directiva', 'admin'],
     eliminar: ['admin'],
     aprobar: ['comision_directiva', 'admin'],
   },
   logs: {
-    ver: ['admin'],
+    ver: ['comision_directiva', 'admin'],
     crear: [],
     editar: [],
     eliminar: [],
@@ -253,12 +418,28 @@ export const ESTADO_BALANCE_COLORS: Record<string, { bg: string; text: string }>
 }
 
 // Helper de permisos
-export function hasPermission(rol: Rol, recurso: Recurso, accion: Accion): boolean {
+export function hasPermission(
+  rol: Rol,
+  recurso: Recurso,
+  accion: Accion,
+  rolAile?: string | null,
+  roleOverrides?: RolePermissionOverridesMap
+): boolean {
+  if (isGlobalManager(rol, rolAile)) return true
+  const dynamicOverride = getDynamicInstitutionalOverride(recurso, accion, rolAile, roleOverrides)
+  if (typeof dynamicOverride === 'boolean') return dynamicOverride
+  if (hasInstitutionalOverride(recurso, accion, rolAile)) return true
   return PERMISSIONS[recurso]?.[accion]?.includes(rol) ?? false
 }
 
-export function canWrite(rol: Rol, recurso: Recurso): boolean {
-  return hasPermission(rol, recurso, 'crear') || hasPermission(rol, recurso, 'editar')
+export function canWrite(
+  rol: Rol,
+  recurso: Recurso,
+  rolAile?: string | null,
+  roleOverrides?: RolePermissionOverridesMap
+): boolean {
+  return hasPermission(rol, recurso, 'crear', rolAile, roleOverrides)
+    || hasPermission(rol, recurso, 'editar', rolAile, roleOverrides)
 }
 
 // Configuración de paginación

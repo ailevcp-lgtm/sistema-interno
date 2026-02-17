@@ -10,6 +10,7 @@ interface CuentasListProps {
     cuentas: CuentaConSaldo[]
     loading: boolean
     onArqueo: (cuenta: CuentaConSaldo) => void
+    canArqueo?: boolean
 }
 
 const getIcon = (tipo: string) => {
@@ -30,7 +31,7 @@ const getLabel = (tipo: string) => {
     }
 }
 
-export function CuentasList({ cuentas, loading, onArqueo }: CuentasListProps) {
+export function CuentasList({ cuentas, loading, onArqueo, canArqueo = true }: CuentasListProps) {
     if (loading) {
         return (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -79,15 +80,19 @@ export function CuentasList({ cuentas, loading, onArqueo }: CuentasListProps) {
                         </div>
 
                         <div className="mt-4 pt-4 border-t flex justify-end">
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                className="w-full sm:w-auto gap-2 text-xs"
-                                onClick={() => onArqueo(cuenta)}
-                            >
-                                <RefreshCw className="w-3.5 h-3.5" />
-                                Realizar Arqueo
-                            </Button>
+                            {canArqueo ? (
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="w-full sm:w-auto gap-2 text-xs"
+                                    onClick={() => onArqueo(cuenta)}
+                                >
+                                    <RefreshCw className="w-3.5 h-3.5" />
+                                    Realizar Arqueo
+                                </Button>
+                            ) : (
+                                <span className="text-xs text-muted-foreground">Solo lectura</span>
+                            )}
                         </div>
                     </CardContent>
                 </Card>

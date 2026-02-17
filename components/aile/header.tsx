@@ -1,6 +1,6 @@
 "use client"
 
-import { Search, Bell, ChevronDown, User, LogOut, CreditCard } from "lucide-react"
+import { Search, ChevronDown, User, LogOut, CreditCard, ShieldAlert } from "lucide-react"
 import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -27,11 +27,12 @@ interface HeaderProps {
 }
 
 export function AileHeader({ currentPage, pageLabel }: HeaderProps) {
-  const { user: authUser, signOut } = useAuth()
+  const { user: authUser, signOut, rol, rolAile, isRoleSimulationActive, clearRoleSimulation } = useAuth()
 
   const user = {
     name: authUser ? `${authUser.nombre} ${authUser.apellido}` : "",
-    role: authUser?.rol || "socio",
+    role: rol,
+    roleAile: rolAile,
     avatarUrl: authUser?.avatar_url || "",
     initials: authUser ? `${authUser.nombre?.[0] || ""}${authUser.apellido?.[0] || ""}`.toUpperCase() : "",
   }
@@ -88,16 +89,24 @@ export function AileHeader({ currentPage, pageLabel }: HeaderProps) {
             </Avatar>
             <div className="hidden md:flex flex-col items-start">
               <span className="text-sm font-medium text-foreground leading-tight">{user.name}</span>
-              <span
-                className="text-[10px] font-medium leading-tight"
-                style={{ color: roleConfig.text }}
-              >
-                {roleConfig.label}
-              </span>
+              <div className="flex items-center gap-1.5">
+                <span
+                  className="text-[10px] font-medium leading-tight"
+                  style={{ color: roleConfig.text }}
+                >
+                  {roleConfig.label}
+                  {user.roleAile ? ` · ${user.roleAile}` : ""}
+                </span>
+                {isRoleSimulationActive ? (
+                  <Badge className="bg-amber-500/20 text-amber-700 border-0 text-[9px] px-1.5 py-0 h-4">
+                    Simulacion
+                  </Badge>
+                ) : null}
+              </div>
             </div>
             <ChevronDown className="w-3.5 h-3.5 text-muted-foreground hidden md:block" />
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48">
+          <DropdownMenuContent align="end" className="w-64">
             <DropdownMenuItem asChild>
               <Link href="/mi-perfil" className="gap-2 cursor-pointer flex items-center">
                 <User className="w-4 h-4" />
@@ -110,6 +119,18 @@ export function AileHeader({ currentPage, pageLabel }: HeaderProps) {
                 Mi estado de cuenta
               </Link>
             </DropdownMenuItem>
+            {isRoleSimulationActive ? (
+              <DropdownMenuItem
+                className="gap-2 cursor-pointer text-amber-700 focus:text-amber-700"
+                onSelect={(event) => {
+                  event.preventDefault()
+                  clearRoleSimulation()
+                }}
+              >
+                <ShieldAlert className="w-4 h-4" />
+                Salir de simulacion
+              </DropdownMenuItem>
+            ) : null}
             <DropdownMenuSeparator />
             <DropdownMenuItem
               className="gap-2 cursor-pointer text-destructive focus:text-destructive"

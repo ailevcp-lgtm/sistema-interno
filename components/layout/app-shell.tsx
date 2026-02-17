@@ -5,11 +5,15 @@ import { usePathname, useRouter } from "next/navigation"
 import { AileSidebar } from "@/components/aile/sidebar"
 import { AileHeader } from "@/components/aile/header"
 import { BottomNav } from "@/components/aile/bottom-nav"
+import { useAuth } from "@/hooks/useAuth"
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const pathname = usePathname()
   const router = useRouter()
+  const { hasPermission } = useAuth()
+
+  const canViewAllDebt = hasPermission("deudas", "ver")
 
   // Determinar página actual basada en pathname
   const currentPage = pathname?.split("/")[1] || "dashboard"
@@ -20,7 +24,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     calendario: "Calendario",
     tareas: "Tareas",
     socios: "Socios",
-    deudas: "Deudas",
+    deudas: canViewAllDebt ? "Deudas" : "Mi deuda",
     movimientos: "Movimientos",
     finanzas: "Finanzas",
     tesoreria: "Tesorería",
@@ -30,6 +34,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   const handleNavigate = (page: string) => {
+    if (page === "deudas" && !canViewAllDebt) {
+      router.push("/deudas/mi-cuenta")
+      return
+    }
     router.push(`/${page}`)
   }
 

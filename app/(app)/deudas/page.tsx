@@ -2,10 +2,10 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { useCuotas } from '@/hooks/useSocios'
 import type { PagoSocio } from '@/hooks/useSocios'
-import { hasPermission } from '@/lib/constants'
 import { formatARS, formatDate, formatPeriodo, getInitials, generateAvatarColor } from '@/lib/utils'
 import { ESTADO_CUOTA_COLORS, ESTADO_CUOTA_INLINE } from '@/lib/constants'
 import type { Cuota, EstadoCuota, PromocionCuota } from '@/lib/types'
@@ -59,14 +59,19 @@ import {
   Tag,
   Plus,
   Pencil,
+  ShieldAlert,
   Trash2,
 } from 'lucide-react'
 
 export default function DeudasPage() {
-  const { user } = useAuth()
+  const router = useRouter()
+  const { user, hasPermission } = useAuth()
+  const canViewAllDebt = !!user && hasPermission('deudas', 'ver')
+  const canViewOwnDebt = !!user?.socio_id
+  const cuotasScopeSocioId = canViewAllDebt ? undefined : (user?.socio_id || '__pending_auth__')
+
   const {
     cuotas,
-    allCuotas,
     totalCuotas,
     totalPages,
     summary,
@@ -89,10 +94,18 @@ export default function DeudasPage() {
     updatePromocion,
     deletePromocion,
     fetchAllPromociones,
-  } = useCuotas()
+  } = useCuotas(cuotasScopeSocioId)
 
-  const canEdit = !!user && hasPermission(user.rol, 'deudas', 'editar')
-  const isAdmin = !!user && (user.rol === 'admin' || user.rol === 'comision_directiva')
+  const canEdit = !!user && hasPermission('deudas', 'editar')
+  const isAdmin = !!user && hasPermission('deudas', 'eliminar')
+  const canAccessDebtModule = canViewAllDebt || canViewOwnDebt
+
+  useEffect(() => {
+    if (!user) return
+    if (!canViewAllDebt && canViewOwnDebt) {
+      router.replace('/deudas/mi-cuenta')
+    }
+  }, [canViewAllDebt, canViewOwnDebt, router, user])
 
   // ── POS Modal state ──
   const [showPagoModal, setShowPagoModal] = useState(false)
@@ -286,14 +299,34 @@ export default function DeudasPage() {
     setAllPromos(updated)
   }
 
+  if (!canAccessDebtModule) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Card className="max-w-2xl w-full border-red-200 bg-red-50">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-red-800">
+              <ShieldAlert className="w-5 h-5" />
+              Acceso restringido a Deudas
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="text-sm text-red-700">
+            No tienes permisos para acceder al módulo de deudas.
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-foreground">Gestión de deudas</h1>
+          <h1 className="text-2xl font-semibold text-foreground">
+            {canViewAllDebt ? 'Gestión de deudas' : 'Mi deuda'}
+          </h1>
           <p className="text-muted-foreground mt-1">
-            {totalCuotas} cuotas registradas
+            {canViewAllDebt ? `${totalCuotas} cuotas registradas` : `${totalCuotas} cuotas en tu cuenta`}
           </p>
         </div>
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
@@ -336,7 +369,7 @@ export default function DeudasPage() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
-                placeholder="Buscar por nombre de socio..."
+                placeholder={canViewAllDebt ? 'Buscar por nombre de socio...' : 'Buscar en tus cuotas...'}
                 value={filters.search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="pl-10"

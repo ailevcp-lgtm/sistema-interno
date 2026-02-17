@@ -631,7 +631,7 @@ export default function CalendarioPage() {
                       reunion={reunion}
                       currentUserId={user?.id}
                       compact
-                      canEdit={canSchedule && reunion.created_by === user?.id}
+                      canEdit={canSchedule}
                       onEdit={startEditingMeeting}
                     />
                   ))}
@@ -661,7 +661,7 @@ export default function CalendarioPage() {
                   key={`upcoming-${reunion.id}`}
                   reunion={reunion}
                   currentUserId={user?.id}
-                  canEdit={canSchedule && reunion.created_by === user?.id}
+                  canEdit={canSchedule}
                   onEdit={startEditingMeeting}
                 />
               ))}
@@ -680,7 +680,7 @@ export default function CalendarioPage() {
             <CardDescription>
               {editingMeetingId
                 ? 'Actualiza datos, participantes y alcance de una reunión existente.'
-                : 'Habilitado para Presidente, Secretario General y Tesorero (admin también).'}
+                : 'Disponible para la Comisión Directiva (incluye control global).'}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-5">
@@ -867,7 +867,7 @@ export default function CalendarioPage() {
               Agendamiento restringido
             </CardTitle>
             <CardDescription className="text-amber-700">
-              Solo Presidente, Secretario General y Tesorero pueden crear reuniones (o admin).
+              Solo la Comisión Directiva puede crear o editar reuniones.
             </CardDescription>
           </CardHeader>
         </Card>

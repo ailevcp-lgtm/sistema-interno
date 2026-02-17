@@ -3,9 +3,8 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useAuth } from '@/hooks/useAuth'
+import { useAuth, useRequirePermission } from '@/hooks/useAuth'
 import { useSocios } from '@/hooks/useSocios'
-import { hasPermission } from '@/lib/constants'
 import { formatDate, getInitials, generateAvatarColor } from '@/lib/utils'
 import { ESTADO_SOCIO_COLORS, ROL_COLORS, ROLES_AILE } from '@/lib/constants'
 import type { Socio, EstadoSocio } from '@/lib/types'
@@ -34,7 +33,8 @@ import { Search, Plus, MoreVertical, UserCheck, UserX, Edit, Eye, ChevronLeft, C
 
 export default function SociosPage() {
   const router = useRouter()
-  const { user } = useAuth()
+  const { user, hasPermission } = useAuth()
+  const { loading: checkingAccess, hasPermission: canAccessSociosModule } = useRequirePermission('socios', 'ver', '/dashboard')
   const {
     socios,
     allSocios,
@@ -50,13 +50,24 @@ export default function SociosPage() {
     loading,
     createSocio,
     uploadAvatar,
-  } = useSocios()
+  } = useSocios(canAccessSociosModule)
 
   const [showNewModal, setShowNewModal] = useState(false)
 
+  if (checkingAccess) {
+    return (
+      <div className="flex items-center justify-center py-12 text-sm text-muted-foreground">
+        Validando permisos...
+      </div>
+    )
+  }
 
-  const canCreate = user && hasPermission(user.rol, 'socios', 'crear')
-  const canEdit = !!user && hasPermission(user.rol, 'socios', 'editar')
+  if (!canAccessSociosModule) {
+    return null
+  }
+
+  const canCreate = !!user && hasPermission('socios', 'crear')
+  const canEdit = !!user && hasPermission('socios', 'editar')
 
   const handleToggleEstado = async (id: string) => {
     try {

@@ -26,8 +26,11 @@ import { toast } from "sonner"
 import Link from "next/link"
 import type { ArticuloEstatuto } from "@/lib/types"
 import { useResumeRefresh } from "@/hooks/useResumeRefresh"
+import { useRequirePermission } from "@/hooks/useAuth"
 
 export default function AdminEstatutoPage() {
+    const { loading: checkingPermission, hasPermission } = useRequirePermission("documentos", "crear", "/documentos")
+
     const [articulos, setArticulos] = useState<ArticuloEstatuto[]>([])
     const [loading, setLoading] = useState(true)
     const [selectedArt, setSelectedArt] = useState<ArticuloEstatuto | null>(null)
@@ -218,6 +221,18 @@ export default function AdminEstatutoPage() {
         } catch (error) {
             console.error(error)
         }
+    }
+
+    if (checkingPermission) {
+        return (
+            <div className="flex items-center justify-center py-20 text-muted-foreground">
+                Validando permisos...
+            </div>
+        )
+    }
+
+    if (!hasPermission) {
+        return null
     }
 
     return (

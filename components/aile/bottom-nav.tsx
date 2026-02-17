@@ -18,24 +18,20 @@ import {
 import { cn } from "@/lib/utils"
 import { useState } from "react"
 import { useAuth } from "@/hooks/useAuth"
-import { canAccessReintegrosModule } from "@/lib/constants"
 
-const mainNavItems = [
-  { id: "dashboard", label: "Inicio", icon: LayoutGrid },
-  { id: "socios", label: "Socios", icon: Users },
-  { id: "finanzas", label: "Finanzas", icon: BarChart2 },
-  { id: "documentos", label: "Docs", icon: FileText },
-]
-
-const moreItems = [
-  { id: "calendario", label: "Calendario", icon: CalendarDays },
-  { id: "tareas", label: "Tareas", icon: KanbanSquare },
-  { id: "deudas", label: "Deudas", icon: CreditCard },
-  { id: "movimientos", label: "Movimientos", icon: ArrowUpDown },
-  { id: "tesoreria", label: "Tesorería", icon: Landmark },
-  { id: "reintegros", label: "Reintegros", icon: ReceiptText, requiresReintegrosAccess: true },
-  { id: "configuracion", label: "Ajustes", icon: Settings },
-]
+const navItems = [
+  { id: "dashboard", label: "Inicio", icon: LayoutGrid, recurso: "dashboard" as const },
+  { id: "socios", label: "Socios", icon: Users, recurso: "socios" as const },
+  { id: "finanzas", label: "Finanzas", icon: BarChart2, recurso: "finanzas" as const },
+  { id: "documentos", label: "Docs", icon: FileText, recurso: "documentos" as const },
+  { id: "calendario", label: "Calendario", icon: CalendarDays, recurso: "calendario" as const },
+  { id: "tareas", label: "Tareas", icon: KanbanSquare, recurso: "tareas" as const },
+  { id: "deudas", label: "Deudas", icon: CreditCard, recurso: "deudas" as const, allowOwnDebtView: true },
+  { id: "movimientos", label: "Movimientos", icon: ArrowUpDown, recurso: "movimientos" as const },
+  { id: "tesoreria", label: "Tesorería", icon: Landmark, recurso: "tesoreria" as const },
+  { id: "reintegros", label: "Reintegros", icon: ReceiptText, recurso: "reintegros" as const },
+  { id: "configuracion", label: "Ajustes", icon: Settings, recurso: "configuracion" as const },
+] as const
 
 interface BottomNavProps {
   currentPage: string
@@ -44,15 +40,24 @@ interface BottomNavProps {
 
 export function BottomNav({ currentPage, onNavigate }: BottomNavProps) {
   const [showMore, setShowMore] = useState(false)
-  const { rol, rolAile } = useAuth()
-  const canAccessReintegros = canAccessReintegrosModule(rol, rolAile)
-  const visibleMoreItems = moreItems.filter((item) =>
-    item.requiresReintegrosAccess ? canAccessReintegros : true
-  )
+  const { hasPermission, user } = useAuth()
+  const canViewAllDebt = hasPermission("deudas", "ver")
+
+  const visibleItems = navItems.filter((item) => {
+    if ('allowOwnDebtView' in item && item.allowOwnDebtView) {
+      return hasPermission(item.recurso, "ver") || Boolean(user?.socio_id)
+    }
+    return hasPermission(item.recurso, "ver")
+  })
+
+  const mainNavItems = visibleItems.slice(0, 4)
+  const moreItems = visibleItems.slice(4)
+  const hasMoreItems = moreItems.length > 0
+  const totalSlots = mainNavItems.length + (hasMoreItems ? 1 : 0)
 
   return (
     <>
-      {showMore && (
+      {showMore && hasMoreItems && (
         <div className="fixed inset-0 z-50 lg:hidden" onClick={() => setShowMore(false)}>
           <div className="absolute inset-0 bg-foreground/20 backdrop-blur-sm" />
           <div
@@ -66,7 +71,7 @@ export function BottomNav({ currentPage, onNavigate }: BottomNavProps) {
               </button>
             </div>
             <div className="flex flex-col gap-0.5">
-              {visibleMoreItems.map((item) => (
+              {moreItems.map((item) => (
                 <button
                   key={item.id}
                   onClick={() => {
@@ -81,7 +86,7 @@ export function BottomNav({ currentPage, onNavigate }: BottomNavProps) {
                   )}
                 >
                   <item.icon className="w-[18px] h-[18px]" strokeWidth={1.8} />
-                  <span>{item.label}</span>
+                  <span>{item.id === "deudas" && !canViewAllDebt ? "Mi deuda" : item.label}</span>
                 </button>
               ))}
             </div>
@@ -93,7 +98,10 @@ export function BottomNav({ currentPage, onNavigate }: BottomNavProps) {
         className="fixed bottom-0 left-0 right-0 z-40 lg:hidden bg-card border-t border-border"
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       >
-        <div className="grid h-16 grid-cols-5 items-center px-1">
+        <div
+          className="grid h-16 items-center px-1"
+          style={{ gridTemplateColumns: `repeat(${Math.max(totalSlots, 1)}, minmax(0, 1fr))` }}
+        >
           {mainNavItems.map((item) => {
             const isActive = currentPage === item.id
             return (
@@ -107,21 +115,23 @@ export function BottomNav({ currentPage, onNavigate }: BottomNavProps) {
               >
                 <item.icon className="w-5 h-5" strokeWidth={isActive ? 2.2 : 1.8} />
                 <span className={cn("text-[10px]", isActive ? "font-semibold" : "font-medium")}>
-                  {item.label}
+                  {item.id === "deudas" && !canViewAllDebt ? "Mi deuda" : item.label}
                 </span>
               </button>
             )
           })}
-          <button
-            onClick={() => setShowMore(!showMore)}
-            className={cn(
-              "flex w-full min-w-0 flex-col items-center gap-0.5 px-1.5 py-1.5 rounded-lg transition-colors",
-              visibleMoreItems.some((i) => i.id === currentPage) ? "text-primary" : "text-muted-foreground"
-            )}
-          >
-            <MoreHorizontal className="w-5 h-5" strokeWidth={1.8} />
-            <span className="text-[10px] font-medium">Mas</span>
-          </button>
+          {hasMoreItems && (
+            <button
+              onClick={() => setShowMore(!showMore)}
+              className={cn(
+                "flex w-full min-w-0 flex-col items-center gap-0.5 px-1.5 py-1.5 rounded-lg transition-colors",
+                moreItems.some((item) => item.id === currentPage) ? "text-primary" : "text-muted-foreground"
+              )}
+            >
+              <MoreHorizontal className="w-5 h-5" strokeWidth={1.8} />
+              <span className="text-[10px] font-medium">Mas</span>
+            </button>
+          )}
         </div>
       </nav>
     </>

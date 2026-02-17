@@ -11,8 +11,6 @@ import type {
   SocioCalendario,
 } from '@/lib/types'
 
-const SCHEDULER_ROLES = new Set(['presidente', 'secretario general', 'tesorero'])
-
 interface SocioCalendarioRow {
   id: string
   usuario_id: string
@@ -113,7 +111,7 @@ function isCalendarRlsRecursion(error: unknown): boolean {
 }
 
 export function useCalendario() {
-  const { user, rol, rolAile } = useAuth()
+  const { user, hasPermission } = useAuth()
   const userId = user?.id
   const [reuniones, setReuniones] = useState<ReunionCalendario[]>([])
   const [sociosDisponibles, setSociosDisponibles] = useState<SocioCalendario[]>([])
@@ -123,7 +121,7 @@ export function useCalendario() {
   const [calendarAvailable, setCalendarAvailable] = useState(true)
   const missingSchemaNotifiedRef = useRef(false)
 
-  const canSchedule = rol === 'admin' || SCHEDULER_ROLES.has((rolAile || '').trim().toLowerCase())
+  const canSchedule = hasPermission('calendario', 'crear')
 
   const retryCalendarCheck = useCallback(() => {
     setCalendarAvailable(true)

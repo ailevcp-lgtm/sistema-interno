@@ -1,12 +1,13 @@
 "use client"
 
 import { useState } from "react"
+import { useAuth } from "@/hooks/useAuth"
 import { useTesoreria, type CuentaConSaldo } from "@/hooks/useTesoreria"
 import { CuentasList } from "@/components/aile/tesoreria/cuentas-list"
 import { ArqueoModal } from "@/components/aile/tesoreria/arqueo-modal"
 import { NuevaTransaccionModal } from "@/components/aile/tesoreria/nueva-transaccion-modal"
 import { Button } from "@/components/ui/button"
-import { ArrowDownCircle, ArrowUpCircle, Search } from "lucide-react"
+import { ArrowDownCircle, ArrowUpCircle, Search, ShieldAlert } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import {
@@ -21,7 +22,10 @@ import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 
 export default function TesoreriaPage() {
+    const { hasPermission } = useAuth()
     const { cuentas, categorias, movimientos, loading, refreshData, registrarArqueo } = useTesoreria()
+    const canViewTesoreria = hasPermission("tesoreria", "ver")
+    const canEditTesoreria = hasPermission("tesoreria", "editar")
 
     // Modals state
     const [showArqueo, setShowArqueo] = useState(false)
@@ -34,11 +38,13 @@ export default function TesoreriaPage() {
     const [searchTerm, setSearchTerm] = useState("")
 
     const handleArqueo = (cuenta: CuentaConSaldo) => {
+        if (!canEditTesoreria) return
         setSelectedCuenta(cuenta)
         setShowArqueo(true)
     }
 
     const handleNuevaTransaccion = (tipo: "ingreso" | "egreso") => {
+        if (!canEditTesoreria) return
         setTransaccionType(tipo)
         setShowNuevaTransaccion(true)
     }
@@ -50,29 +56,53 @@ export default function TesoreriaPage() {
         m.evento?.nombre.toLowerCase().includes(searchTerm.toLowerCase())
     )
 
+    if (!canViewTesoreria) {
+        return (
+            <div className="flex items-center justify-center py-20">
+                <Card className="max-w-2xl w-full border-red-200 bg-red-50">
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2 text-red-800">
+                            <ShieldAlert className="w-5 h-5" />
+                            Acceso restringido a Tesorería
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent className="text-sm text-red-700">
+                        Este módulo está disponible solo para roles autorizados.
+                    </CardContent>
+                </Card>
+            </div>
+        )
+    }
+
     return (
         <div className="flex flex-col gap-6">
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                 <div>
                     <h1 className="text-2xl font-bold text-[#6314a7]">Tesorería</h1>
                     <p className="text-muted-foreground">Gestión de cajas, bancos y movimientos diarios</p>
+                    {!canEditTesoreria && (
+                        <p className="text-xs text-muted-foreground mt-1">Vista de solo lectura</p>
+                    )}
                 </div>
-                <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-                    <Button onClick={() => handleNuevaTransaccion("ingreso")} className="bg-emerald-600 hover:bg-emerald-700 w-full sm:w-auto">
-                        <ArrowUpCircle className="w-4 h-4 mr-2" />
-                        Nuevo Ingreso
-                    </Button>
-                    <Button onClick={() => handleNuevaTransaccion("egreso")} variant="destructive" className="w-full sm:w-auto">
-                        <ArrowDownCircle className="w-4 h-4 mr-2" />
-                        Nuevo Egreso
-                    </Button>
-                </div>
+                {canEditTesoreria && (
+                    <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                        <Button onClick={() => handleNuevaTransaccion("ingreso")} className="bg-emerald-600 hover:bg-emerald-700 w-full sm:w-auto">
+                            <ArrowUpCircle className="w-4 h-4 mr-2" />
+                            Nuevo Ingreso
+                        </Button>
+                        <Button onClick={() => handleNuevaTransaccion("egreso")} variant="destructive" className="w-full sm:w-auto">
+                            <ArrowDownCircle className="w-4 h-4 mr-2" />
+                            Nuevo Egreso
+                        </Button>
+                    </div>
+                )}
             </div>
 
             <CuentasList
                 cuentas={cuentas}
                 loading={loading}
                 onArqueo={handleArqueo}
+                canArqueo={canEditTesoreria}
             />
 
             <Card>
@@ -156,20 +186,22 @@ export default function TesoreriaPage() {
             {/* Modals */}
             <ArqueoModal
                 cuenta={selectedCuenta}
-                isOpen={showArqueo}
+                isOpen={canEditTesoreria && showArqueo}
                 onClose={() => setShowArqueo(false)}
                 onSuccess={refreshData}
                 registrarArqueo={registrarArqueo}
             />
 
-            <NuevaTransaccionModal
-                isOpen={showNuevaTransaccion}
-                onClose={() => setShowNuevaTransaccion(false)}
-                onSuccess={refreshData}
-                initialType={transaccionType}
-                cuentas={cuentas}
-                categorias={categorias}
-            />
+            {canEditTesoreria && (
+                <NuevaTransaccionModal
+                    isOpen={showNuevaTransaccion}
+                    onClose={() => setShowNuevaTransaccion(false)}
+                    onSuccess={refreshData}
+                    initialType={transaccionType}
+                    cuentas={cuentas}
+                    categorias={categorias}
+                />
+            )}
         </div>
     )
 }

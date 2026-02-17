@@ -1,10 +1,14 @@
 'use client'
 
-import { createContext, useContext, useEffect, useState, ReactNode, useCallback, useRef } from 'react'
+import { createContext, useContext, useEffect, useState, ReactNode, useCallback, useRef, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import type { Rol, Recurso, Accion } from '@/lib/types'
-import { PERMISSIONS } from '@/lib/constants'
+import {
+  hasPermission as resolvePermission,
+  normalizeInstitutionalRole,
+  type RolePermissionOverridesMap,
+} from '@/lib/constants'
 import { RequestTimeoutError, runWithRecovery } from '@/lib/async-recovery'
 
 interface AuthUser {
@@ -18,25 +22,75 @@ interface AuthUser {
   rol_aile?: string | null
 }
 
+interface RoleSimulationState {
+  rol: Rol
+  rolAile: string | null
+}
+
 interface AuthContextType {
   user: AuthUser | null
   rol: Rol
   rolAile: string | null
+  actualRol: Rol
+  actualRolAile: string | null
   loading: boolean
   sessionStatus: 'unknown' | 'authenticated' | 'unauthenticated'
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>
   signInWithGoogle: (nextPath?: string) => Promise<{ error: Error | null }>
   signOut: () => Promise<void>
   hasPermission: (recurso: Recurso, accion: Accion) => boolean
+  hasActualPermission: (recurso: Recurso, accion: Accion) => boolean
   refreshUser: () => Promise<void>
+  canRoleSimulation: boolean
+  isRoleSimulationActive: boolean
+  roleSimulation: RoleSimulationState | null
+  setRoleSimulation: (value: RoleSimulationState | null) => void
+  clearRoleSimulation: () => void
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
+
+const ROLE_SIMULATION_STORAGE_KEY = 'aile-role-simulation'
+const ROLE_SIMULATION_ALLOWED_EMAILS = new Set([
+  'lautarolopezlabrin@gmail.com',
+])
 
 interface SessionUserLike {
   id: string
   email?: string | null
   user_metadata?: Record<string, unknown>
+}
+
+interface RolePermissionOverrideRow {
+  rol_aile_definition_id: string
+  recurso: Recurso
+  accion: Accion
+  permitido: boolean
+  rol_aile_definition?: { nombre?: string } | null
+}
+
+interface SocioAuthRow {
+  id: string
+  usuario_id: string | null
+  nombre: string
+  apellido: string
+  email: string | null
+  estado: string
+  rol: string | null
+  avatar_url: string | null
+  rol_aile: string | null
+  rol_aile_definition?: { nombre?: string } | null
+}
+
+interface RequirePermissionOptions {
+  useActualPermission?: boolean
+}
+
+const SOCIO_AUTH_SELECT =
+  'id, usuario_id, nombre, apellido, email, estado, rol, avatar_url, rol_aile, rol_aile_definition:rol_aile_definitions(nombre)'
+
+function isValidRol(value: unknown): value is Rol {
+  return value === 'socio' || value === 'comision_directiva' || value === 'revisor_cuentas' || value === 'admin'
 }
 
 function resolveSafeNextPath(nextPath?: string | null): string {
@@ -64,22 +118,6 @@ function getGoogleAvatarUrl(sessionUser: SessionUserLike): string | undefined {
   return undefined
 }
 
-interface SocioAuthRow {
-  id: string
-  usuario_id: string | null
-  nombre: string
-  apellido: string
-  email: string | null
-  estado: string
-  rol: string | null
-  avatar_url: string | null
-  rol_aile: string | null
-  rol_aile_definition?: { nombre?: string } | null
-}
-
-const SOCIO_AUTH_SELECT =
-  'id, usuario_id, nombre, apellido, email, estado, rol, avatar_url, rol_aile, rol_aile_definition:rol_aile_definitions(nombre)'
-
 function mapSocioToAuthUser(
   data: SocioAuthRow,
   authEmail: string,
@@ -97,6 +135,70 @@ function mapSocioToAuthUser(
     avatar_url: data.avatar_url || googleAvatarUrl || undefined,
     rol_aile: institutionalRole || null,
   }
+}
+
+function readRoleSimulationFromStorage(): RoleSimulationState | null {
+  if (typeof window === 'undefined') return null
+
+  try {
+    const rawValue = window.localStorage.getItem(ROLE_SIMULATION_STORAGE_KEY)
+    if (!rawValue) return null
+
+    const parsed = JSON.parse(rawValue) as { rol?: unknown; rolAile?: unknown }
+    if (!isValidRol(parsed.rol)) return null
+
+    return {
+      rol: parsed.rol,
+      rolAile: typeof parsed.rolAile === 'string' ? parsed.rolAile : null,
+    }
+  } catch {
+    return null
+  }
+}
+
+function persistRoleSimulationToStorage(value: RoleSimulationState | null): void {
+  if (typeof window === 'undefined') return
+
+  if (!value) {
+    window.localStorage.removeItem(ROLE_SIMULATION_STORAGE_KEY)
+    return
+  }
+
+  window.localStorage.setItem(ROLE_SIMULATION_STORAGE_KEY, JSON.stringify(value))
+}
+
+function buildPermissionOverridesMap(rows: RolePermissionOverrideRow[]): RolePermissionOverridesMap {
+  const overridesMap: RolePermissionOverridesMap = {}
+
+  for (const row of rows) {
+    const roleName = row.rol_aile_definition?.nombre
+    if (!roleName) continue
+
+    const normalizedRoleName = normalizeInstitutionalRole(roleName)
+    if (!normalizedRoleName) continue
+
+    overridesMap[normalizedRoleName] ||= {}
+    overridesMap[normalizedRoleName]![row.recurso] ||= {}
+    overridesMap[normalizedRoleName]![row.recurso]![row.accion] = row.permitido
+  }
+
+  return overridesMap
+}
+
+async function fetchRolePermissionOverrides(): Promise<RolePermissionOverridesMap> {
+  const { data, error } = await supabase
+    .from('role_permission_overrides')
+    .select(`
+      rol_aile_definition_id,
+      recurso,
+      accion,
+      permitido,
+      rol_aile_definition:rol_aile_definitions(nombre)
+    `)
+
+  if (error) throw error
+
+  return buildPermissionOverridesMap((data || []) as RolePermissionOverrideRow[])
 }
 
 async function fetchSocioByUserId(userId: string): Promise<SocioAuthRow | null> {
@@ -191,15 +293,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null)
   const [loading, setLoading] = useState(true)
   const [sessionStatus, setSessionStatus] = useState<'unknown' | 'authenticated' | 'unauthenticated'>('unknown')
+  const [permissionOverrides, setPermissionOverrides] = useState<RolePermissionOverridesMap>({})
+  const [roleSimulation, setRoleSimulationState] = useState<RoleSimulationState | null>(null)
+
   const latestUserRef = useRef<AuthUser | null>(null)
   const router = useRouter()
 
-  const rol = user?.rol || 'socio'
-  const rolAile = user?.rol_aile || null
+  const actualRol = user?.rol || 'socio'
+  const actualRolAile = user?.rol_aile || null
+
+  const canRoleSimulation = useMemo(() => {
+    const normalizedEmail = (user?.email || '').trim().toLowerCase()
+    if (!normalizedEmail || !ROLE_SIMULATION_ALLOWED_EMAILS.has(normalizedEmail)) return false
+    return resolvePermission(actualRol, 'configuracion', 'ver', actualRolAile, permissionOverrides)
+  }, [actualRol, actualRolAile, permissionOverrides, user?.email])
+
+  const rol = (canRoleSimulation && roleSimulation) ? roleSimulation.rol : actualRol
+  const rolAile = (canRoleSimulation && roleSimulation) ? (roleSimulation.rolAile ?? actualRolAile) : actualRolAile
 
   useEffect(() => {
     latestUserRef.current = user
   }, [user])
+
+  useEffect(() => {
+    setRoleSimulationState(readRoleSimulationFromStorage())
+  }, [])
+
+  useEffect(() => {
+    if (!user || !canRoleSimulation) {
+      setRoleSimulationState((current) => {
+        if (!current) return current
+        persistRoleSimulationToStorage(null)
+        return null
+      })
+    }
+  }, [canRoleSimulation, user])
+
+  const setRoleSimulation = useCallback((value: RoleSimulationState | null) => {
+    setRoleSimulationState(value)
+    persistRoleSimulationToStorage(value)
+  }, [])
+
+  const clearRoleSimulation = useCallback(() => {
+    setRoleSimulationState(null)
+    persistRoleSimulationToStorage(null)
+  }, [])
 
   const syncUserFromSession = useCallback(async () => {
     try {
@@ -211,32 +349,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!session?.user) {
         setSessionStatus('unauthenticated')
         setUser(null)
+        setPermissionOverrides({})
         return
       }
 
-      const authorizedUser = await runWithRecovery(
-        () => fetchAuthorizedSocioData(session.user as SessionUserLike),
-        { label: 'auth authorized profile', timeoutMs: 12_000, retries: 2, retryDelayMs: 400 }
-      )
+      const [authorizedUser, dynamicPermissionOverrides] = await Promise.all([
+        runWithRecovery(
+          () => fetchAuthorizedSocioData(session.user as SessionUserLike),
+          { label: 'auth authorized profile', timeoutMs: 12_000, retries: 2, retryDelayMs: 400 }
+        ),
+        runWithRecovery(
+          () => fetchRolePermissionOverrides(),
+          { label: 'auth role permission overrides', timeoutMs: 12_000, retries: 2, retryDelayMs: 400 }
+        ),
+      ])
 
       if (!authorizedUser) {
         await supabase.auth.signOut()
         setSessionStatus('unauthenticated')
         setUser(null)
+        setPermissionOverrides({})
         return
       }
 
       setSessionStatus('authenticated')
       setUser(authorizedUser)
+      setPermissionOverrides(dynamicPermissionOverrides)
     } catch (error) {
       if (error instanceof RequestTimeoutError || (error as { name?: string } | null)?.name === 'RequestTimeoutError') {
-        // Evita ruido de "runtime error" cuando Supabase demora más de lo esperado.
-        // Si ya había sesión en memoria, conservamos estado autenticado.
         if (latestUserRef.current) {
           setSessionStatus('authenticated')
         } else {
           setSessionStatus('unauthenticated')
           setUser(null)
+          setPermissionOverrides({})
         }
 
         if (process.env.NODE_ENV !== 'production') {
@@ -269,6 +415,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (event === 'SIGNED_OUT') {
           setSessionStatus('unauthenticated')
           setUser(null)
+          setPermissionOverrides({})
+          clearRoleSimulation()
           return
         }
 
@@ -286,7 +434,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       mounted = false
       subscription.unsubscribe()
     }
-  }, [syncUserFromSession])
+  }, [clearRoleSimulation, syncUserFromSession])
 
   const signIn = async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password })
@@ -300,7 +448,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signInWithGoogle = async (nextPath: string = '/dashboard') => {
     if (typeof window === 'undefined') {
-      return { error: new Error('Google OAuth solo está disponible en el navegador') }
+      return { error: new Error('Google OAuth solo esta disponible en el navegador') }
     }
 
     const safeNextPath = resolveSafeNextPath(nextPath)
@@ -325,13 +473,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await supabase.auth.signOut()
     setSessionStatus('unauthenticated')
     setUser(null)
+    setPermissionOverrides({})
+    clearRoleSimulation()
     router.push('/login')
   }
 
   const hasPermission = useCallback((recurso: Recurso, accion: Accion): boolean => {
-    const allowedRoles = PERMISSIONS[recurso]?.[accion] || []
-    return allowedRoles.includes(rol)
-  }, [rol])
+    return resolvePermission(rol, recurso, accion, rolAile, permissionOverrides)
+  }, [rol, rolAile, permissionOverrides])
+
+  const hasActualPermission = useCallback((recurso: Recurso, accion: Accion): boolean => {
+    return resolvePermission(actualRol, recurso, accion, actualRolAile, permissionOverrides)
+  }, [actualRol, actualRolAile, permissionOverrides])
 
   const refreshUser = useCallback(async () => {
     await syncUserFromSession()
@@ -341,13 +494,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     user,
     rol,
     rolAile,
+    actualRol,
+    actualRolAile,
     loading,
     sessionStatus,
     signIn,
     signInWithGoogle,
     signOut,
     hasPermission,
+    hasActualPermission,
     refreshUser,
+    canRoleSimulation,
+    isRoleSimulationActive: Boolean(canRoleSimulation && roleSimulation),
+    roleSimulation,
+    setRoleSimulation,
+    clearRoleSimulation,
   }
 
   return (
@@ -365,7 +526,6 @@ export function useAuth() {
   return context
 }
 
-// Hook para proteger rutas
 export function useRequireAuth(redirectTo: string = '/login') {
   const { user, loading, sessionStatus } = useAuth()
   const router = useRouter()
@@ -379,16 +539,23 @@ export function useRequireAuth(redirectTo: string = '/login') {
   return { user, loading }
 }
 
-// Hook para requerir permisos específicos
-export function useRequirePermission(recurso: Recurso, accion: Accion, redirectTo: string = '/dashboard') {
-  const { user, loading, hasPermission } = useAuth()
+export function useRequirePermission(
+  recurso: Recurso,
+  accion: Accion,
+  redirectTo: string = '/dashboard',
+  options: RequirePermissionOptions = {}
+) {
+  const { user, loading, hasPermission, hasActualPermission } = useAuth()
   const router = useRouter()
 
+  const permissionResolver = options.useActualPermission ? hasActualPermission : hasPermission
+  const isAllowed = permissionResolver(recurso, accion)
+
   useEffect(() => {
-    if (!loading && user && !hasPermission(recurso, accion)) {
+    if (!loading && user && !isAllowed) {
       router.push(redirectTo)
     }
-  }, [user, loading, hasPermission, router, recurso, accion, redirectTo])
+  }, [user, loading, isAllowed, router, redirectTo])
 
-  return { user, loading, hasPermission: hasPermission(recurso, accion) }
+  return { user, loading, hasPermission: isAllowed }
 }

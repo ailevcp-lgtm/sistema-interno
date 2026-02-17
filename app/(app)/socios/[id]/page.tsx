@@ -5,7 +5,6 @@ import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { useSocios, useCuotas } from '@/hooks/useSocios'
-import { hasPermission } from '@/lib/constants'
 import { formatARS, formatDate, getInitials, generateAvatarColor, calcularAntiguedad } from '@/lib/utils'
 import { ESTADO_CUOTA_COLORS, ESTADO_SOCIO_COLORS } from '@/lib/constants'
 import type { Cuota } from '@/lib/types'
@@ -34,12 +33,12 @@ import {
 
 export default function SocioDetailPage() {
   const params = useParams()
-  const { user } = useAuth()
+  const { user, hasPermission } = useAuth()
   const { getSocio, updateSocio, uploadAvatar } = useSocios()
   const { cuotas: allCuotas } = useCuotas(params.id as string)
 
   const socio = getSocio(params.id as string)
-  const canEdit = !!user && hasPermission(user.rol, 'socios', 'editar')
+  const canEdit = !!user && hasPermission('socios', 'editar')
 
   const [showEditModal, setShowEditModal] = useState(false)
 

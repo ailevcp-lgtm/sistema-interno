@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
-import { canAccessReintegrosModule } from '@/lib/constants'
 import { useReintegrosDirector } from '@/hooks/useReintegrosDirector'
 import { useReintegrosTesoreria } from '@/hooks/useReintegrosTesoreria'
 import type { ReintegroEstado, SolicitudReintegro } from '@/lib/types'
@@ -106,14 +105,10 @@ function formatDate(value?: string | null) {
 }
 
 export default function ReintegrosPage() {
-  const { rol, rolAile } = useAuth()
-
-  const normalizedRolAile = (rolAile || '').trim().toLowerCase()
-  const canAccessScreen = canAccessReintegrosModule(rol, rolAile)
-  const canCreateSolicitud =
-    rol === 'admin'
-    || ['director de finanzas', 'presidente', 'tesorero', 'secretario general'].includes(normalizedRolAile)
-  const canOperateAsTesoreria = rol === 'admin' || normalizedRolAile === 'tesorero'
+  const { hasPermission } = useAuth()
+  const canAccessScreen = hasPermission('reintegros', 'ver')
+  const canCreateSolicitud = hasPermission('reintegros', 'crear')
+  const canOperateAsTesoreria = hasPermission('reintegros', 'aprobar')
 
   const director = useReintegrosDirector({ enabled: canAccessScreen })
   const tesoreria = useReintegrosTesoreria({ enabled: canAccessScreen })
@@ -409,7 +404,7 @@ export default function ReintegrosPage() {
               Acceso restringido al módulo de reintegros
             </CardTitle>
             <CardDescription className="text-red-700">
-              Este módulo está habilitado para Director de Finanzas, Tesorero, Presidente y Secretario General.
+              Este módulo está habilitado para roles autorizados por la Comisión Directiva.
             </CardDescription>
           </CardHeader>
         </Card>
@@ -587,7 +582,7 @@ export default function ReintegrosPage() {
             <CardContent>
               {!canOperateAsTesoreria && (
                 <div className="mb-4 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-700">
-                  Vista de solo lectura. Solo Tesorería puede aprobar, observar o rechazar.
+                  Vista de solo lectura. Solo perfiles con aprobación pueden observar, aprobar o rechazar.
                 </div>
               )}
 
@@ -693,7 +688,7 @@ export default function ReintegrosPage() {
             <CardContent>
               {!canOperateAsTesoreria && (
                 <div className="mb-4 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-700">
-                  Vista de solo lectura. Solo Tesorería puede registrar pagos.
+                  Vista de solo lectura. Solo perfiles con aprobación pueden registrar pagos.
                 </div>
               )}
 

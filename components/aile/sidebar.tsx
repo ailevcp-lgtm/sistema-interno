@@ -17,21 +17,20 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/hooks/useAuth"
-import { canAccessReintegrosModule } from "@/lib/constants"
 
 const navItems = [
-  { id: "dashboard", label: "Inicio", icon: LayoutGrid },
-  { id: "calendario", label: "Calendario", icon: CalendarDays },
-  { id: "tareas", label: "Tareas", icon: KanbanSquare },
-  { id: "socios", label: "Socios", icon: Users },
-  { id: "deudas", label: "Deudas", icon: CreditCard },
-  { id: "movimientos", label: "Movimientos", icon: ArrowUpDown },
-  { id: "finanzas", label: "Finanzas", icon: BarChart2 },
-  { id: "tesoreria", label: "Tesorería", icon: Landmark },
-  { id: "reintegros", label: "Reintegros", icon: ReceiptText, requiresReintegrosAccess: true },
-  { id: "documentos", label: "Documentos", icon: FileText },
-  { id: "configuracion", label: "Ajustes", icon: Settings },
-]
+  { id: "dashboard", label: "Inicio", icon: LayoutGrid, recurso: "dashboard" as const },
+  { id: "calendario", label: "Calendario", icon: CalendarDays, recurso: "calendario" as const },
+  { id: "tareas", label: "Tareas", icon: KanbanSquare, recurso: "tareas" as const },
+  { id: "socios", label: "Socios", icon: Users, recurso: "socios" as const },
+  { id: "deudas", label: "Deudas", icon: CreditCard, recurso: "deudas" as const, allowOwnDebtView: true },
+  { id: "movimientos", label: "Movimientos", icon: ArrowUpDown, recurso: "movimientos" as const },
+  { id: "finanzas", label: "Finanzas", icon: BarChart2, recurso: "finanzas" as const },
+  { id: "tesoreria", label: "Tesorería", icon: Landmark, recurso: "tesoreria" as const },
+  { id: "reintegros", label: "Reintegros", icon: ReceiptText, recurso: "reintegros" as const },
+  { id: "documentos", label: "Documentos", icon: FileText, recurso: "documentos" as const },
+  { id: "configuracion", label: "Ajustes", icon: Settings, recurso: "configuracion" as const },
+] as const
 
 interface SidebarProps {
   currentPage: string
@@ -41,11 +40,15 @@ interface SidebarProps {
 }
 
 export function AileSidebar({ currentPage, onNavigate, collapsed, onToggle }: SidebarProps) {
-  const { rol, rolAile } = useAuth()
-  const canAccessReintegros = canAccessReintegrosModule(rol, rolAile)
-  const visibleNavItems = navItems.filter((item) =>
-    item.requiresReintegrosAccess ? canAccessReintegros : true
-  )
+  const { hasPermission, user } = useAuth()
+  const canViewAllDebt = hasPermission("deudas", "ver")
+
+  const visibleNavItems = navItems.filter((item) => {
+    if ('allowOwnDebtView' in item && item.allowOwnDebtView) {
+      return hasPermission(item.recurso, "ver") || Boolean(user?.socio_id)
+    }
+    return hasPermission(item.recurso, "ver")
+  })
 
   return (
     <aside
@@ -95,10 +98,10 @@ export function AileSidebar({ currentPage, onNavigate, collapsed, onToggle }: Si
                   ? "bg-white/20 text-white font-semibold"
                   : "text-white/65 hover:text-white hover:bg-white/10"
               )}
-              title={collapsed ? item.label : undefined}
+              title={collapsed ? (item.id === "deudas" && !canViewAllDebt ? "Mi deuda" : item.label) : undefined}
             >
               <item.icon className="w-[18px] h-[18px] shrink-0" strokeWidth={isActive ? 2.2 : 1.8} />
-              {!collapsed && <span>{item.label}</span>}
+              {!collapsed && <span>{item.id === "deudas" && !canViewAllDebt ? "Mi deuda" : item.label}</span>}
             </button>
           )
         })}
