@@ -461,7 +461,7 @@ export function TareasTaskCard({
                   {task.titulo}
                 </p>
                 {task.descripcion && (
-                  <div className="text-[13px] leading-relaxed text-slate-600">
+                  <div className="min-w-0 text-[13px] leading-relaxed text-slate-600 break-all [overflow-wrap:anywhere]">
                     {isExpanded ? (
                       <LinkifiedText text={task.descripcion} />
                     ) : (

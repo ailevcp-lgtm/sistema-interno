@@ -30,7 +30,7 @@ export function LinkifiedText({ text, className, linkClassName }: LinkifiedTextP
   const lines = text.split(/\r?\n/)
 
   return (
-    <span className={cn('break-words', className)}>
+    <span className={cn('min-w-0 w-full break-words [overflow-wrap:anywhere]', className)}>
       {lines.map((line, lineIndex) => {
         const chunks = line.split(URL_SPLIT_REGEX)
 
@@ -53,7 +53,10 @@ export function LinkifiedText({ text, className, linkClassName }: LinkifiedTextP
                     href={normalizeHref(core)}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className={cn('text-primary underline underline-offset-2 hover:text-primary/80 break-all', linkClassName)}
+                    className={cn(
+                      'text-primary underline underline-offset-2 hover:text-primary/80 break-all [overflow-wrap:anywhere]',
+                      linkClassName
+                    )}
                   >
                     {core}
                   </a>
