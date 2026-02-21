@@ -125,6 +125,16 @@ export interface PlanificacionCalendario {
   updated_at: string
 }
 
+export interface TareaVencimientoCalendario {
+  id: string
+  proyecto_id: string
+  proyecto_nombre?: string | null
+  titulo: string
+  descripcion?: string | null
+  fecha_limite: string
+  estado_backend?: EstadoTareaWorkflow | string | null
+}
+
 export type TipoProyectoTarea = 'institucional' | 'interno_direccion'
 export type DireccionBase = 'CEA' | 'Finanzas' | 'Recursos Humanos' | 'Comunicación'
 export type EstadoProyectoTarea =

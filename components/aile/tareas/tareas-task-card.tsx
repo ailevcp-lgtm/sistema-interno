@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   ArrowRightLeft,
+  CalendarClock,
   CheckCircle2,
   GripVertical,
   Pencil,
@@ -134,6 +135,44 @@ function workflowLabel(value?: string | null) {
   return labels[normalized] || normalized
 }
 
+function parseDateOnly(value?: string | null): Date | null {
+  if (!value) return null
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
+  if (!match) return null
+
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  const parsed = new Date(year, month - 1, day, 0, 0, 0, 0)
+
+  if (
+    Number.isNaN(parsed.getTime()) ||
+    parsed.getFullYear() !== year ||
+    parsed.getMonth() !== month - 1 ||
+    parsed.getDate() !== day
+  ) {
+    return null
+  }
+
+  return parsed
+}
+
+function startOfDay(date: Date): Date {
+  const copy = new Date(date)
+  copy.setHours(0, 0, 0, 0)
+  return copy
+}
+
+function formatDueDate(value?: string | null): string | null {
+  const parsed = parseDateOnly(value)
+  if (!parsed) return null
+  return parsed.toLocaleDateString('es-AR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  })
+}
+
 export function TareasTaskCard({
   task,
   projectType,
@@ -217,6 +256,47 @@ export function TareasTaskCard({
   const assignee = task.asignado_usuario_id ? userById.get(task.asignado_usuario_id) : undefined
   const assigneeName = assignee ? `${assignee.nombre} ${assignee.apellido}`.trim() : 'Sin asignar'
   const backendWorkflowLabel = workflowLabel(task.estado_backend)
+  const dueDate = parseDateOnly(task.fecha_limite)
+  const dueDateLabel = formatDueDate(task.fecha_limite)
+  const dueDateMeta = useMemo(() => {
+    if (!dueDate) return null
+
+    const today = startOfDay(new Date())
+    const diffDays = Math.round((dueDate.getTime() - today.getTime()) / 86_400_000)
+
+    if (diffDays < 0) {
+      return {
+        tone: 'border-rose-300 bg-rose-50 text-rose-800',
+        label: `Vencida hace ${Math.abs(diffDays)} día${Math.abs(diffDays) === 1 ? '' : 's'}`,
+      }
+    }
+
+    if (diffDays === 0) {
+      return {
+        tone: 'border-amber-300 bg-amber-50 text-amber-900',
+        label: 'Vence hoy',
+      }
+    }
+
+    if (diffDays === 1) {
+      return {
+        tone: 'border-amber-300 bg-amber-50 text-amber-900',
+        label: 'Vence mañana',
+      }
+    }
+
+    if (diffDays <= 3) {
+      return {
+        tone: 'border-orange-300 bg-orange-50 text-orange-900',
+        label: `Faltan ${diffDays} días`,
+      }
+    }
+
+    return {
+      tone: 'border-cyan-300 bg-cyan-50 text-cyan-900',
+      label: `Faltan ${diffDays} días`,
+    }
+  }, [dueDate])
 
   const submitTaskUpdate = async () => {
     await onUpdateTask(task.id, {
@@ -320,6 +400,14 @@ export function TareasTaskCard({
           </div>
           {(canManageTask || canEditTask) && <GripVertical className="h-4 w-4 text-muted-foreground shrink-0" />}
         </div>
+
+        {dueDate && dueDateLabel && dueDateMeta && (
+          <div className={cn('mt-3 flex items-center gap-2 rounded-md border px-2.5 py-2 text-xs font-semibold', dueDateMeta.tone)}>
+            <CalendarClock className="h-3.5 w-3.5 shrink-0" />
+            <span>Fecha límite: {dueDateLabel}</span>
+            <span className="ml-auto">{dueDateMeta.label}</span>
+          </div>
+        )}
 
         <div className="mt-3 flex flex-wrap items-center gap-1.5">
           <Badge className={cn('text-[11px] border', statusBadge(task.estado))}>

@@ -5,7 +5,6 @@ import {
   CalendarDays,
   Clock3,
   CalendarClock,
-  ListChecks,
   Flag,
   MapPin,
   Users,
@@ -40,6 +39,7 @@ import type {
   PlanificacionCalendario,
   ReunionCalendario,
   ReunionCalendarioParticipante,
+  TareaVencimientoCalendario,
 } from '@/lib/types'
 
 const ALCANCE_LABELS: Record<CalendarioAlcanceReunion, string> = {
@@ -131,6 +131,49 @@ function formatPlanningRange(item: Pick<PlanificacionCalendario, 'fecha_inicio' 
   const inicio = formatDateOnly(item.fecha_inicio)
   if (item.fecha_fin === item.fecha_inicio) return inicio
   return `${inicio} - ${formatDateOnly(item.fecha_fin)}`
+}
+
+function dueDateMeta(value: string): {
+  tone: string
+  label: string
+} {
+  const due = parseDateOnly(value)
+  if (!due) {
+    return {
+      tone: 'border-slate-200 bg-slate-50 text-slate-700',
+      label: 'Sin fecha válida',
+    }
+  }
+
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const diffDays = Math.round((due.getTime() - today.getTime()) / 86_400_000)
+
+  if (diffDays < 0) {
+    return {
+      tone: 'border-rose-300 bg-rose-50 text-rose-800',
+      label: `Vencida hace ${Math.abs(diffDays)} día${Math.abs(diffDays) === 1 ? '' : 's'}`,
+    }
+  }
+
+  if (diffDays === 0) {
+    return {
+      tone: 'border-amber-300 bg-amber-50 text-amber-900',
+      label: 'Vence hoy',
+    }
+  }
+
+  if (diffDays === 1) {
+    return {
+      tone: 'border-amber-300 bg-amber-50 text-amber-900',
+      label: 'Vence mañana',
+    }
+  }
+
+  return {
+    tone: 'border-cyan-300 bg-cyan-50 text-cyan-900',
+    label: `Faltan ${diffDays} días`,
+  }
 }
 
 function parseLocalDateTime(localDateTime: string): Date | null {
@@ -433,14 +476,54 @@ function PlanificacionCard({
   )
 }
 
+function TareaVencimientoCard({
+  tarea,
+  compact = false,
+}: {
+  tarea: TareaVencimientoCalendario
+  compact?: boolean
+}) {
+  const meta = dueDateMeta(tarea.fecha_limite)
+
+  return (
+    <div
+      className={cn(
+        'rounded-xl border bg-card/90 p-4 transition-colors hover:bg-muted/20',
+        compact ? 'space-y-2' : 'space-y-3'
+      )}
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge variant="outline" className={cn('font-medium', meta.tone)}>
+          Vencimiento de tarea
+        </Badge>
+      </div>
+
+      <div>
+        <p className={cn('text-foreground font-semibold leading-tight', compact ? 'text-sm' : 'text-base')}>
+          {tarea.titulo}
+        </p>
+        <p className={cn('text-muted-foreground', compact ? 'text-xs mt-1' : 'text-sm mt-1')}>
+          {tarea.proyecto_nombre ? `Proyecto: ${tarea.proyecto_nombre}` : 'Proyecto institucional'}
+        </p>
+      </div>
+
+      <div className={cn('rounded-lg border px-2.5 py-2 text-xs font-semibold', meta.tone)}>
+        Fecha límite: {formatDateOnly(tarea.fecha_limite)} · {meta.label}
+      </div>
+    </div>
+  )
+}
+
 export default function CalendarioPage() {
   const { user } = useAuth()
   const {
     reuniones,
     planificaciones,
+    tareasConVencimiento,
     sociosDisponibles,
     loading,
     planningLoading,
+    tasksLoading,
     creating,
     updating,
     creatingPlanning,
@@ -462,7 +545,6 @@ export default function CalendarioPage() {
   } = useCalendario()
 
   const [selectedDate, setSelectedDate] = useState<Date>(new Date())
-  const [selectedPlanningDate, setSelectedPlanningDate] = useState<Date>(new Date())
   const [searchUsers, setSearchUsers] = useState('')
   const [form, setForm] = useState<MeetingFormState>(() => buildDefaultFormState())
   const [planningForm, setPlanningForm] = useState<PlanningFormState>(() => buildDefaultPlanningFormState())
@@ -478,10 +560,28 @@ export default function CalendarioPage() {
   const savingPlanning = creatingPlanning || updatingPlanning || deletingPlanning
   const planningSubmitDisabled = savingPlanning || (editingPlanningId ? !canEditPlanning : !canCreatePlanning)
 
-  const reunionesDelDia = useMemo(() => {
-    const selectedKey = dateKey(selectedDate)
-    return reuniones.filter((r) => dateKey(r.fecha_inicio) === selectedKey)
-  }, [reuniones, selectedDate])
+  const selectedDayKey = dateKey(selectedDate)
+
+  const reunionesDelDia = useMemo(() => (
+    reuniones.filter((r) => dateKey(r.fecha_inicio) === selectedDayKey)
+  ), [reuniones, selectedDayKey])
+
+  const planificacionesOrdenadas = useMemo(
+    () => [...planificaciones].sort((a, b) => (
+      a.fecha_inicio.localeCompare(b.fecha_inicio) || a.titulo.localeCompare(b.titulo)
+    )),
+    [planificaciones]
+  )
+
+  const planificacionesDelDia = useMemo(() => (
+    planificacionesOrdenadas.filter((item) => (
+      item.fecha_inicio <= selectedDayKey && item.fecha_fin >= selectedDayKey
+    ))
+  ), [planificacionesOrdenadas, selectedDayKey])
+
+  const tareasVencenDelDia = useMemo(() => (
+    tareasConVencimiento.filter((tarea) => dateKey(tarea.fecha_limite) === selectedDayKey)
+  ), [tareasConVencimiento, selectedDayKey])
 
   const proximasReuniones = useMemo(() => {
     const now = Date.now()
@@ -490,10 +590,15 @@ export default function CalendarioPage() {
       .sort((a, b) => new Date(a.fecha_inicio).getTime() - new Date(b.fecha_inicio).getTime())
   }, [reuniones])
 
-  const diasConReunion = useMemo(
-    () => reuniones.map((r) => new Date(r.fecha_inicio)),
-    [reuniones]
-  )
+  const proximasPlanificaciones = useMemo(() => {
+    const todayKey = dateKey(new Date())
+    return planificacionesOrdenadas.filter((item) => item.fecha_fin >= todayKey)
+  }, [planificacionesOrdenadas])
+
+  const proximosVencimientosTareas = useMemo(() => {
+    const todayKey = dateKey(new Date())
+    return tareasConVencimiento.filter((tarea) => tarea.fecha_limite >= todayKey)
+  }, [tareasConVencimiento])
 
   const reunionesSemana = useMemo(() => {
     const now = Date.now()
@@ -504,6 +609,35 @@ export default function CalendarioPage() {
     }).length
   }, [reuniones])
 
+  const planificacionesSemana = useMemo(() => {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const in7Days = new Date(today)
+    in7Days.setDate(in7Days.getDate() + 7)
+
+    return planificaciones.filter((item) => {
+      const inicio = parseDateOnly(item.fecha_inicio)
+      const fin = parseDateOnly(item.fecha_fin)
+      if (!inicio || !fin) return false
+      return inicio.getTime() <= in7Days.getTime() && fin.getTime() >= today.getTime()
+    }).length
+  }, [planificaciones])
+
+  const vencimientosSemana = useMemo(() => {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const in7Days = new Date(today)
+    in7Days.setDate(in7Days.getDate() + 7)
+
+    return tareasConVencimiento.filter((item) => {
+      const due = parseDateOnly(item.fecha_limite)
+      if (!due) return false
+      return due.getTime() >= today.getTime() && due.getTime() <= in7Days.getTime()
+    }).length
+  }, [tareasConVencimiento])
+
+  const totalEventosSemana = reunionesSemana + planificacionesSemana + vencimientosSemana
+
   const reunionesMes = useMemo(() => {
     const selectedMonth = selectedDate.getMonth()
     const selectedYear = selectedDate.getFullYear()
@@ -513,55 +647,33 @@ export default function CalendarioPage() {
     }).length
   }, [reuniones, selectedDate])
 
-  const reunionesComoInvolucrado = useMemo(() => {
-    if (!user?.id) return 0
-
-    return reuniones.filter((r) => {
-      if (r.created_by === user.id) return true
-      return (r.participantes || []).some(
-        (p) => p.usuario_id === user.id && p.participacion === 'involucrado'
-      )
-    }).length
-  }, [reuniones, user?.id])
-
-  const planificacionesOrdenadas = useMemo(
-    () => [...planificaciones].sort((a, b) => (
-      a.fecha_inicio.localeCompare(b.fecha_inicio) || a.titulo.localeCompare(b.titulo)
-    )),
-    [planificaciones]
-  )
-
-  const planificacionesDelDia = useMemo(() => {
-    const selectedKey = dateKey(selectedPlanningDate)
-    return planificacionesOrdenadas.filter((item) => (
-      item.fecha_inicio <= selectedKey && item.fecha_fin >= selectedKey
-    ))
-  }, [planificacionesOrdenadas, selectedPlanningDate])
-
-  const proximasPlanificaciones = useMemo(() => {
-    const todayKey = dateKey(new Date())
-    return planificacionesOrdenadas.filter((item) => item.fecha_fin >= todayKey)
-  }, [planificacionesOrdenadas])
-
-  const planificacionesTentativas = useMemo(
-    () => planificaciones.filter((item) => item.estado === 'tentativo').length,
-    [planificaciones]
-  )
-
-  const planificacionesDefinitivas = useMemo(
-    () => planificaciones.filter((item) => item.estado === 'definitivo').length,
-    [planificaciones]
-  )
-
   const planificacionesMes = useMemo(() => {
-    const selectedMonth = selectedPlanningDate.getMonth()
-    const selectedYear = selectedPlanningDate.getFullYear()
+    const selectedMonth = selectedDate.getMonth()
+    const selectedYear = selectedDate.getFullYear()
     return planificaciones.filter((item) => {
       const start = parseDateOnly(item.fecha_inicio)
       if (!start) return false
       return start.getMonth() === selectedMonth && start.getFullYear() === selectedYear
     }).length
-  }, [planificaciones, selectedPlanningDate])
+  }, [planificaciones, selectedDate])
+
+  const vencimientosMes = useMemo(() => {
+    const selectedMonth = selectedDate.getMonth()
+    const selectedYear = selectedDate.getFullYear()
+    return tareasConVencimiento.filter((item) => {
+      const due = parseDateOnly(item.fecha_limite)
+      if (!due) return false
+      return due.getMonth() === selectedMonth && due.getFullYear() === selectedYear
+    }).length
+  }, [tareasConVencimiento, selectedDate])
+
+  const totalEventosMes = reunionesMes + planificacionesMes + vencimientosMes
+  const totalVencimientosAbiertos = tareasConVencimiento.length
+
+  const diasConReunion = useMemo(
+    () => reuniones.map((r) => new Date(r.fecha_inicio)),
+    [reuniones]
+  )
 
   const diasPlanificacion = useMemo(() => {
     const dayStatus = new Map<string, CalendarioEstadoPlanificacion>()
@@ -598,6 +710,17 @@ export default function CalendarioPage() {
 
     return { tentativas, definitivas }
   }, [planificaciones])
+
+  const diasConVencimiento = useMemo(() => {
+    const days: Date[] = []
+    for (const item of tareasConVencimiento) {
+      const parsed = parseDateOnly(item.fecha_limite)
+      if (parsed) {
+        days.push(parsed)
+      }
+    }
+    return days
+  }, [tareasConVencimiento])
 
   const sociosFiltrados = useMemo(() => {
     const needle = searchUsers.trim().toLowerCase()
@@ -647,7 +770,7 @@ export default function CalendarioPage() {
     setEditingMeetingId(null)
   }
 
-  const resetPlanningForm = (baseDate: Date = selectedPlanningDate) => {
+  const resetPlanningForm = (baseDate: Date = selectedDate) => {
     setPlanningForm(buildDefaultPlanningFormState(baseDate))
     setEditingPlanningId(null)
   }
@@ -781,7 +904,7 @@ export default function CalendarioPage() {
     setEditingPlanningId(planificacion.id)
     const startDate = parseDateOnly(planificacion.fecha_inicio)
     if (startDate) {
-      setSelectedPlanningDate(startDate)
+      setSelectedDate(startDate)
     }
     toast.success(`Editando fecha: ${planificacion.titulo}`)
     focusPlanningForm()
@@ -855,7 +978,7 @@ export default function CalendarioPage() {
       await crearPlanificacion(payloadBase)
     }
 
-    setSelectedPlanningDate(new Date(inicio))
+    setSelectedDate(new Date(inicio))
     resetPlanningForm(new Date(inicio))
   }
 
@@ -878,7 +1001,7 @@ export default function CalendarioPage() {
         <div className="flex flex-col gap-2">
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">Calendario</h1>
           <p className="text-sm text-muted-foreground">
-            Agenda institucional con reuniones y planificación anual de actividades.
+            Agenda única institucional con reuniones, planificación de comisión y vencimientos de tareas.
           </p>
         </div>
 
@@ -912,33 +1035,39 @@ export default function CalendarioPage() {
       <div className="flex flex-col gap-2">
         <h1 className="text-2xl font-semibold tracking-tight text-foreground">Calendario</h1>
         <p className="text-sm text-muted-foreground">
-          Agenda institucional con reuniones y planificación anual de actividades.
+          Agenda única institucional con reuniones, planificación de comisión y vencimientos de tareas.
         </p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card className="border-violet-200 bg-violet-50/40">
           <CardHeader className="pb-2">
-            <CardDescription>Próximos 7 días</CardDescription>
-            <CardTitle className="text-2xl text-violet-900">{reunionesSemana}</CardTitle>
+            <CardDescription>Próximos 7 días (todo)</CardDescription>
+            <CardTitle className="text-2xl text-violet-900">{totalEventosSemana}</CardTitle>
           </CardHeader>
-          <CardContent className="text-xs text-violet-700">Reuniones con inicio en la próxima semana.</CardContent>
+          <CardContent className="text-xs text-violet-700">
+            {reunionesSemana} reuniones, {planificacionesSemana} actividades de comisión y {vencimientosSemana} vencimientos.
+          </CardContent>
         </Card>
 
         <Card className="border-cyan-200 bg-cyan-50/40">
           <CardHeader className="pb-2">
-            <CardDescription>Mes seleccionado</CardDescription>
-            <CardTitle className="text-2xl text-cyan-900">{reunionesMes}</CardTitle>
+            <CardDescription>Mes seleccionado (todo)</CardDescription>
+            <CardTitle className="text-2xl text-cyan-900">{totalEventosMes}</CardTitle>
           </CardHeader>
-          <CardContent className="text-xs text-cyan-700">Total de reuniones del mes visible en calendario.</CardContent>
+          <CardContent className="text-xs text-cyan-700">
+            Incluye reuniones, planificación y fechas límite de tareas.
+          </CardContent>
         </Card>
 
-        <Card className="border-emerald-200 bg-emerald-50/40">
+        <Card className="border-rose-200 bg-rose-50/40">
           <CardHeader className="pb-2">
-            <CardDescription>Tus reuniones clave</CardDescription>
-            <CardTitle className="text-2xl text-emerald-900">{reunionesComoInvolucrado}</CardTitle>
+            <CardDescription>Vencimientos de tareas activos</CardDescription>
+            <CardTitle className="text-2xl text-rose-900">{totalVencimientosAbiertos}</CardTitle>
           </CardHeader>
-          <CardContent className="text-xs text-emerald-700">Organizadas por ti o donde figuras como involucrado/a.</CardContent>
+          <CardContent className="text-xs text-rose-700">
+            Tareas abiertas con fecha límite asignada.
+          </CardContent>
         </Card>
       </div>
 
@@ -946,13 +1075,13 @@ export default function CalendarioPage() {
         <CardHeader>
           <CardTitle className="text-lg flex items-center gap-2">
             <CalendarDays className="w-5 h-5" />
-            Calendario mensual
+            Calendario único unificado
           </CardTitle>
           <CardDescription>
-            Días con reuniones marcados en violeta. Selecciona un día para ver el detalle.
+            Un solo calendario para reuniones, planificación anual de comisión y vencimientos de tareas.
           </CardDescription>
         </CardHeader>
-        <CardContent className="grid gap-4 sm:gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
+        <CardContent className="grid gap-4 sm:gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
           <div className="rounded-xl border bg-card p-3">
             <Calendar
               mode="single"
@@ -961,10 +1090,21 @@ export default function CalendarioPage() {
                 if (value) {
                   setSelectedDate(value)
                   syncFormDateWithSelection(value)
+                  syncPlanningFormDateWithSelection(value)
                 }
               }}
-              modifiers={{ conReunion: diasConReunion }}
-              modifiersClassNames={{ conReunion: 'bg-[#6314a7]/20 text-[#6314a7] font-semibold rounded-md' }}
+              modifiers={{
+                conReunion: diasConReunion,
+                planTentativa: diasPlanificacion.tentativas,
+                planDefinitiva: diasPlanificacion.definitivas,
+                vencimientoTarea: diasConVencimiento,
+              }}
+              modifiersClassNames={{
+                conReunion: 'ring-1 ring-violet-400 text-violet-950 font-semibold rounded-md',
+                planTentativa: 'ring-1 ring-amber-500 text-amber-950 font-semibold rounded-md',
+                planDefinitiva: 'ring-2 ring-emerald-600 text-emerald-950 font-semibold rounded-md',
+                vencimientoTarea: 'ring-2 ring-rose-600 text-rose-950 font-semibold rounded-md',
+              }}
               className="w-full p-0"
               classNames={{
                 months: 'w-full',
@@ -979,9 +1119,10 @@ export default function CalendarioPage() {
                 row: 'mt-1 grid grid-cols-7',
                 cell: 'p-0 text-center',
                 day: 'h-11 sm:h-14 w-full rounded-md text-xs sm:text-sm font-medium transition-colors hover:bg-muted',
-                day_today: 'bg-muted text-foreground',
-                day_selected: 'bg-[#6314a7] text-white hover:bg-[#6314a7]',
-                day_outside: 'text-muted-foreground opacity-40',
+                day_today: 'bg-white text-foreground ring-2 ring-violet-300',
+                day_selected: 'bg-[#4f0f86] text-white hover:bg-[#4f0f86] focus:bg-[#4f0f86] shadow-sm',
+                day_outside: 'text-muted-foreground/65',
+                day_disabled: 'text-muted-foreground/50',
               }}
             />
           </div>
@@ -997,65 +1138,79 @@ export default function CalendarioPage() {
                 })}
               </p>
               <p className="text-sm text-muted-foreground mt-1">
-                {reunionesDelDia.length} reunión/es
+                {reunionesDelDia.length + planificacionesDelDia.length + tareasVencenDelDia.length} evento/s
               </p>
             </div>
 
-            {loading ? (
-              <p className="text-sm text-muted-foreground">Cargando reuniones...</p>
-            ) : reunionesDelDia.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No hay reuniones para este día.</p>
+            <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+              <Badge variant="outline" className="font-medium bg-violet-100 text-violet-900 border-violet-200">
+                Reunión
+              </Badge>
+              <Badge variant="outline" className={cn('font-medium', PLANIFICACION_ESTADO_BADGES.tentativo)}>
+                Planificación tentativo
+              </Badge>
+              <Badge variant="outline" className={cn('font-medium', PLANIFICACION_ESTADO_BADGES.definitivo)}>
+                Planificación definitivo
+              </Badge>
+              <Badge variant="outline" className="font-medium bg-rose-100 text-rose-900 border-rose-200">
+                Vencimiento de tarea
+              </Badge>
+            </div>
+
+            {loading || planningLoading || tasksLoading ? (
+              <p className="text-sm text-muted-foreground">Cargando eventos del día...</p>
+            ) : (reunionesDelDia.length + planificacionesDelDia.length + tareasVencenDelDia.length) === 0 ? (
+              <p className="text-sm text-muted-foreground">No hay eventos para este día.</p>
             ) : (
               <ScrollArea className="h-[300px] sm:h-[430px] pr-3">
-                <div className="space-y-2">
-                  {reunionesDelDia.map((reunion) => (
-                    <ReunionCard
-                      key={`day-${reunion.id}`}
-                      reunion={reunion}
-                      currentUserId={user?.id}
-                      compact
-                      canEdit={canSchedule}
-                      onEdit={startEditingMeeting}
-                    />
-                  ))}
+                <div className="space-y-4">
+                  {reunionesDelDia.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Reuniones</p>
+                      {reunionesDelDia.map((reunion) => (
+                        <ReunionCard
+                          key={`day-${reunion.id}`}
+                          reunion={reunion}
+                          currentUserId={user?.id}
+                          compact
+                          canEdit={canSchedule}
+                          onEdit={startEditingMeeting}
+                        />
+                      ))}
+                    </div>
+                  )}
+
+                  {planificacionesDelDia.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Planificación de comisión</p>
+                      {planificacionesDelDia.map((planificacion) => (
+                        <PlanificacionCard
+                          key={`day-plan-${planificacion.id}`}
+                          planificacion={planificacion}
+                          compact
+                          canEdit={canEditPlanning}
+                          canDelete={canDeletePlanning}
+                          onEdit={startEditingPlanning}
+                          onDelete={(item) => { void handleDeletePlanning(item) }}
+                        />
+                      ))}
+                    </div>
+                  )}
+
+                  {tareasVencenDelDia.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Vencimientos de tareas</p>
+                      {tareasVencenDelDia.map((tarea) => (
+                        <TareaVencimientoCard key={`day-task-${tarea.id}`} tarea={tarea} compact />
+                      ))}
+                    </div>
+                  )}
                 </div>
               </ScrollArea>
             )}
           </div>
         </CardContent>
       </Card>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card className="border-amber-200 bg-amber-50/40">
-          <CardHeader className="pb-2">
-            <CardDescription>Fechas tentativas</CardDescription>
-            <CardTitle className="text-2xl text-amber-900">{planificacionesTentativas}</CardTitle>
-          </CardHeader>
-          <CardContent className="text-xs text-amber-700">
-            Actividades de comisión sujetas a confirmación.
-          </CardContent>
-        </Card>
-
-        <Card className="border-emerald-200 bg-emerald-50/40">
-          <CardHeader className="pb-2">
-            <CardDescription>Fechas definitivas</CardDescription>
-            <CardTitle className="text-2xl text-emerald-900">{planificacionesDefinitivas}</CardTitle>
-          </CardHeader>
-          <CardContent className="text-xs text-emerald-700">
-            Actividades confirmadas para comunicar a socios.
-          </CardContent>
-        </Card>
-
-        <Card className="border-cyan-200 bg-cyan-50/40">
-          <CardHeader className="pb-2">
-            <CardDescription>Mes de planificación</CardDescription>
-            <CardTitle className="text-2xl text-cyan-900">{planificacionesMes}</CardTitle>
-          </CardHeader>
-          <CardContent className="text-xs text-cyan-700">
-            Fechas con inicio en el mes actualmente seleccionado.
-          </CardContent>
-        </Card>
-      </div>
 
       {!planningAvailable ? (
         <Card className="border-amber-300 bg-amber-50">
@@ -1080,105 +1235,6 @@ export default function CalendarioPage() {
         </Card>
       ) : (
         <>
-          <Card className="border-border/80">
-            <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2">
-                <ListChecks className="w-5 h-5" />
-                Planificación anual de la comisión
-              </CardTitle>
-              <CardDescription>
-                Fechas tentativas y definitivas visibles para todos los socios en calendario y listado.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-4 sm:gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
-              <div className="rounded-xl border bg-card p-3">
-                <Calendar
-                  mode="single"
-                  selected={selectedPlanningDate}
-                  onSelect={(value) => {
-                    if (value) {
-                      setSelectedPlanningDate(value)
-                      syncPlanningFormDateWithSelection(value)
-                    }
-                  }}
-                  modifiers={{
-                    tentativa: diasPlanificacion.tentativas,
-                    definitiva: diasPlanificacion.definitivas,
-                  }}
-                  modifiersClassNames={{
-                    tentativa: 'bg-amber-100 text-amber-800 font-semibold rounded-md',
-                    definitiva: 'bg-emerald-100 text-emerald-800 font-semibold rounded-md',
-                  }}
-                  className="w-full p-0"
-                  classNames={{
-                    months: 'w-full',
-                    month: 'w-full space-y-3',
-                    caption: 'relative flex items-center justify-center py-2',
-                    caption_label: 'text-sm sm:text-base font-semibold',
-                    nav: 'absolute inset-x-0 top-2 flex items-center justify-between px-1 sm:px-2',
-                    nav_button: 'h-8 w-8 bg-transparent',
-                    table: 'w-full border-collapse',
-                    head_row: 'grid grid-cols-7',
-                    head_cell: 'text-center text-[10px] sm:text-xs font-semibold uppercase tracking-wide text-muted-foreground py-2',
-                    row: 'mt-1 grid grid-cols-7',
-                    cell: 'p-0 text-center',
-                    day: 'h-11 sm:h-14 w-full rounded-md text-xs sm:text-sm font-medium transition-colors hover:bg-muted',
-                    day_today: 'bg-muted text-foreground',
-                    day_selected: 'bg-[#6314a7] text-white hover:bg-[#6314a7]',
-                    day_outside: 'text-muted-foreground opacity-40',
-                  }}
-                />
-              </div>
-
-              <div className="space-y-3">
-                <div className="rounded-xl border bg-muted/20 p-4">
-                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Día seleccionado</p>
-                  <p className="mt-1 text-base font-semibold text-foreground">
-                    {selectedPlanningDate.toLocaleDateString('es-AR', {
-                      weekday: 'long',
-                      day: 'numeric',
-                      month: 'long',
-                    })}
-                  </p>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    {planificacionesDelDia.length} actividad/es
-                  </p>
-                </div>
-
-                <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-                  <Badge variant="outline" className={cn('font-medium', PLANIFICACION_ESTADO_BADGES.tentativo)}>
-                    Tentativa
-                  </Badge>
-                  <Badge variant="outline" className={cn('font-medium', PLANIFICACION_ESTADO_BADGES.definitivo)}>
-                    Definitiva
-                  </Badge>
-                </div>
-
-                {planningLoading ? (
-                  <p className="text-sm text-muted-foreground">Cargando planificación...</p>
-                ) : planificacionesDelDia.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No hay actividades de comisión para este día.</p>
-                ) : (
-                  <ScrollArea className="h-[300px] sm:h-[430px] pr-3">
-                    <div className="space-y-2">
-                      {planificacionesDelDia.map((planificacion) => (
-                        <PlanificacionCard
-                          key={`day-plan-${planificacion.id}`}
-                          planificacion={planificacion}
-                          compact
-                          canEdit={canEditPlanning}
-                          canDelete={canDeletePlanning}
-                          onEdit={startEditingPlanning}
-                          onDelete={(item) => { void handleDeletePlanning(item) }}
-                        />
-                      ))}
-                    </div>
-                  </ScrollArea>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Fechas de comisión</CardTitle>
@@ -1283,7 +1339,7 @@ export default function CalendarioPage() {
                         setPlanningForm((prev) => ({ ...prev, fechaInicio: value }))
                         const parsed = parseDateOnly(value)
                         if (parsed) {
-                          setSelectedPlanningDate(parsed)
+                          setSelectedDate(parsed)
                         }
                       }}
                     />
@@ -1357,6 +1413,28 @@ export default function CalendarioPage() {
                   canEdit={canSchedule}
                   onEdit={startEditingMeeting}
                 />
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Próximos vencimientos de tareas</CardTitle>
+          <CardDescription>
+            Fechas límite activas sincronizadas con el tablero de tareas.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {tasksLoading ? (
+            <p className="text-sm text-muted-foreground">Cargando vencimientos...</p>
+          ) : proximosVencimientosTareas.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No hay tareas activas con fecha límite.</p>
+          ) : (
+            <div className="space-y-3">
+              {proximosVencimientosTareas.map((tarea) => (
+                <TareaVencimientoCard key={`upcoming-task-${tarea.id}`} tarea={tarea} />
               ))}
             </div>
           )}

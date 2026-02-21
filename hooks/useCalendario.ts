@@ -11,6 +11,7 @@ import type {
   ReunionCalendario,
   ReunionCalendarioParticipante,
   SocioCalendario,
+  TareaVencimientoCalendario,
 } from '@/lib/types'
 
 interface SocioCalendarioRow {
@@ -32,6 +33,20 @@ interface SupabaseErrorLike {
   details?: string
   hint?: string
   error_description?: string
+}
+
+interface TareaVencimientoRow {
+  id: string
+  proyecto_id: string
+  titulo: string
+  descripcion?: string | null
+  estado: string
+  fecha_vencimiento: string
+}
+
+interface ProyectoTareaNombreRow {
+  id: string
+  nombre: string
 }
 
 export interface CrearReunionPayload {
@@ -142,14 +157,35 @@ function isPlanningSchemaMissing(error: unknown): boolean {
   )
 }
 
+function isTasksSchemaMissing(error: unknown): boolean {
+  const maybe = (typeof error === 'object' && error ? error as SupabaseErrorLike : null)
+  const code = (maybe?.code || '').toUpperCase()
+
+  if (code === 'PGRST205' || code === '42P01') {
+    return true
+  }
+
+  const details = toErrorDetails(error).toLowerCase()
+  if (!details) return false
+
+  return (
+    details.includes("could not find the table 'public.tareas'") ||
+    details.includes('relation "tareas" does not exist') ||
+    details.includes("could not find the table 'public.proyectos_tareas'") ||
+    details.includes('relation "proyectos_tareas" does not exist')
+  )
+}
+
 export function useCalendario() {
   const { user, hasPermission } = useAuth()
   const userId = user?.id
   const [reuniones, setReuniones] = useState<ReunionCalendario[]>([])
   const [planificaciones, setPlanificaciones] = useState<PlanificacionCalendario[]>([])
+  const [tareasConVencimiento, setTareasConVencimiento] = useState<TareaVencimientoCalendario[]>([])
   const [sociosDisponibles, setSociosDisponibles] = useState<SocioCalendario[]>([])
   const [loading, setLoading] = useState(true)
   const [planningLoading, setPlanningLoading] = useState(true)
+  const [tasksLoading, setTasksLoading] = useState(true)
   const [creating, setCreating] = useState(false)
   const [updating, setUpdating] = useState(false)
   const [creatingPlanning, setCreatingPlanning] = useState(false)
@@ -355,6 +391,74 @@ export function useCalendario() {
     }
   }, [calendarAvailable, canSchedule])
 
+  const fetchTaskDeadlines = useCallback(async () => {
+    if (!userId) {
+      setTareasConVencimiento([])
+      setTasksLoading(false)
+      return
+    }
+
+    setTasksLoading(true)
+    try {
+      const { data: tasksData, error: tasksError } = await runWithRecovery(
+        () => supabase
+          .from('tareas')
+          .select('id, proyecto_id, titulo, descripcion, estado, fecha_vencimiento')
+          .not('fecha_vencimiento', 'is', null)
+          .neq('estado', 'cerrada')
+          .order('fecha_vencimiento', { ascending: true }),
+        { label: 'calendario tareas vencimiento' }
+      )
+
+      if (tasksError) throw tasksError
+
+      const taskRows = (tasksData || []) as TareaVencimientoRow[]
+      if (taskRows.length === 0) {
+        setTareasConVencimiento([])
+        return
+      }
+
+      const projectIds = Array.from(new Set(taskRows.map((row) => row.proyecto_id).filter(Boolean)))
+      const projectNameById = new Map<string, string>()
+
+      if (projectIds.length > 0) {
+        const { data: projectsData, error: projectsError } = await runWithRecovery(
+          () => supabase
+            .from('proyectos_tareas')
+            .select('id, nombre')
+            .in('id', projectIds),
+          { label: 'calendario tareas proyectos' }
+        )
+
+        if (projectsError) throw projectsError
+
+        for (const row of (projectsData || []) as ProyectoTareaNombreRow[]) {
+          projectNameById.set(row.id, row.nombre)
+        }
+      }
+
+      setTareasConVencimiento(taskRows.map((row) => ({
+        id: row.id,
+        proyecto_id: row.proyecto_id,
+        proyecto_nombre: projectNameById.get(row.proyecto_id) || null,
+        titulo: row.titulo,
+        descripcion: row.descripcion ?? null,
+        fecha_limite: row.fecha_vencimiento,
+        estado_backend: row.estado,
+      })))
+    } catch (error) {
+      if (isTasksSchemaMissing(error)) {
+        setTareasConVencimiento([])
+        return
+      }
+
+      console.error('Error fetching tasks deadlines for calendar:', toErrorDetails(error))
+      toast.error('No se pudieron cargar los vencimientos de tareas')
+    } finally {
+      setTasksLoading(false)
+    }
+  }, [userId])
+
   useEffect(() => {
     void fetchReuniones()
   }, [fetchReuniones])
@@ -367,6 +471,10 @@ export function useCalendario() {
     void fetchSociosDisponibles()
   }, [fetchSociosDisponibles])
 
+  useEffect(() => {
+    void fetchTaskDeadlines()
+  }, [fetchTaskDeadlines])
+
   useResumeRefresh(() => {
     if (calendarAvailable) {
       void fetchReuniones()
@@ -374,6 +482,7 @@ export function useCalendario() {
     if (planningAvailable) {
       void fetchPlanificaciones()
     }
+    void fetchTaskDeadlines()
   }, { throttleMs: 5_000 })
 
   useEffect(() => {
@@ -409,12 +518,28 @@ export function useCalendario() {
       )
     }
 
+    channel
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'tareas' },
+        () => {
+          void fetchTaskDeadlines()
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'proyectos_tareas' },
+        () => {
+          void fetchTaskDeadlines()
+        }
+      )
+
     channel.subscribe()
 
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [calendarAvailable, planningAvailable, userId, fetchReuniones, fetchPlanificaciones])
+  }, [calendarAvailable, planningAvailable, userId, fetchReuniones, fetchPlanificaciones, fetchTaskDeadlines])
 
   const crearReunion = useCallback(async (payload: CrearReunionPayload) => {
     if (!calendarAvailable) {
@@ -628,9 +753,11 @@ export function useCalendario() {
   return {
     reuniones,
     planificaciones,
+    tareasConVencimiento,
     sociosDisponibles,
     loading,
     planningLoading,
+    tasksLoading,
     creating,
     updating,
     creatingPlanning,
@@ -646,6 +773,7 @@ export function useCalendario() {
     retryCalendarCheck,
     fetchReuniones,
     fetchPlanificaciones,
+    fetchTaskDeadlines,
     crearReunion,
     actualizarReunion,
     crearPlanificacion,
