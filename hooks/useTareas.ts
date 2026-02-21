@@ -1332,15 +1332,8 @@ export function useTareas() {
       async () => callRpcWithFallback('borrado de tarea', [
         { fn: 'rpc_tasks_delete_task', args: { p_tarea_id: taskId } },
         { fn: 'rpc_tareas_delete_task', args: { p_tarea_id: taskId } },
-        {
-          fn: 'rpc_tasks_update_task_editable',
-          args: {
-            p_tarea_id: taskId,
-            p_payload: { estado: 'cerrada' },
-          },
-        },
       ]),
-      'Tarea archivada'
+      'Tarea eliminada'
     )
   }, [callRpcWithFallback, canManageTask, runMutation, taskById, throwPermissionError])
 
