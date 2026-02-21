@@ -28,7 +28,9 @@ roles_director_finanzas AS (
 deny_payload AS (
   SELECT
     r.id AS rol_id,
-    a.accion
+    'deudas'::text AS recurso,
+    a.accion,
+    false AS permitido
   FROM roles_con_deuda_restringida r
   CROSS JOIN (
     VALUES
@@ -42,13 +44,20 @@ deny_payload AS (
 allow_payload AS (
   SELECT
     r.id AS rol_id,
-    a.accion
+    'deudas'::text AS recurso,
+    a.accion,
+    true AS permitido
   FROM roles_director_finanzas r
   CROSS JOIN (
     VALUES
       ('ver'::text),
       ('editar'::text)
   ) AS a(accion)
+),
+upsert_payload AS (
+  SELECT rol_id, recurso, accion, permitido FROM deny_payload
+  UNION ALL
+  SELECT rol_id, recurso, accion, permitido FROM allow_payload
 )
 INSERT INTO role_permission_overrides (
   rol_aile_definition_id,
@@ -58,27 +67,10 @@ INSERT INTO role_permission_overrides (
 )
 SELECT
   rol_id,
-  'deudas',
-  accion,
-  false
-FROM deny_payload
-ON CONFLICT (rol_aile_definition_id, recurso, accion)
-DO UPDATE SET
-  permitido = EXCLUDED.permitido,
-  updated_at = now();
-
-INSERT INTO role_permission_overrides (
-  rol_aile_definition_id,
   recurso,
   accion,
   permitido
-)
-SELECT
-  rol_id,
-  'deudas',
-  accion,
-  true
-FROM allow_payload
+FROM upsert_payload
 ON CONFLICT (rol_aile_definition_id, recurso, accion)
 DO UPDATE SET
   permitido = EXCLUDED.permitido,
