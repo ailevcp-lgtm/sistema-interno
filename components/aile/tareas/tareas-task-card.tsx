@@ -4,8 +4,11 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   ArrowRightLeft,
   CalendarClock,
+  ChevronDown,
+  Check,
   CheckCircle2,
   GripVertical,
+  MoreHorizontal,
   Pencil,
   Plus,
   Save,
@@ -21,6 +24,13 @@ import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import {
   Dialog,
   DialogContent,
@@ -114,6 +124,21 @@ function statusBadge(status: EstadoTareaKanban) {
   }
 }
 
+function statusMarker(status: EstadoTareaKanban) {
+  switch (status) {
+    case 'pendiente':
+      return 'border-slate-400 text-slate-500'
+    case 'en_progreso':
+      return 'border-sky-500 text-sky-500'
+    case 'en_revision':
+      return 'border-amber-500 text-amber-500'
+    case 'completada':
+      return 'border-emerald-500 text-emerald-500'
+    default:
+      return 'border-slate-400 text-slate-500'
+  }
+}
+
 const STATUS_OPTIONS: EstadoTareaKanban[] = ['pendiente', 'en_progreso', 'en_revision', 'completada']
 
 function workflowLabel(value?: string | null) {
@@ -169,8 +194,14 @@ function formatDueDate(value?: string | null): string | null {
   return parsed.toLocaleDateString('es-AR', {
     day: '2-digit',
     month: '2-digit',
-    year: 'numeric',
   })
+}
+
+function truncateText(value?: string | null, maxLength = 120): string {
+  const normalized = (value || '').replace(/\s+/g, ' ').trim()
+  if (!normalized) return ''
+  if (normalized.length <= maxLength) return normalized
+  return `${normalized.slice(0, maxLength - 1)}…`
 }
 
 export function TareasTaskCard({
@@ -196,6 +227,7 @@ export function TareasTaskCard({
   onSendToCd,
   onResolveCd,
 }: TareasTaskCardProps) {
+  const [isExpanded, setIsExpanded] = useState(false)
   const [openEdit, setOpenEdit] = useState(false)
   const [openAssign, setOpenAssign] = useState(false)
   const [openHandoff, setOpenHandoff] = useState(false)
@@ -245,6 +277,10 @@ export function TareasTaskCard({
     projectDirection,
   ])
 
+  useEffect(() => {
+    setIsExpanded(false)
+  }, [task.id])
+
   const userById = useMemo(() => {
     const map = new Map<string, UsuarioAsignableTarea>()
     for (const member of users) {
@@ -258,6 +294,7 @@ export function TareasTaskCard({
   const backendWorkflowLabel = workflowLabel(task.estado_backend)
   const dueDate = parseDateOnly(task.fecha_limite)
   const dueDateLabel = formatDueDate(task.fecha_limite)
+  const dueDateCompactLabel = dueDateLabel || 'Sin fecha'
   const dueDateMeta = useMemo(() => {
     if (!dueDate) return null
 
@@ -297,6 +334,8 @@ export function TareasTaskCard({
       label: `Faltan ${diffDays} días`,
     }
   }, [dueDate])
+  const canOpenActionsMenu = canManageTask || canEditTask || canResolveCd
+  const canQuickComplete = (canManageTask || canEditTask) && task.estado !== 'completada'
 
   const submitTaskUpdate = async () => {
     await onUpdateTask(task.id, {
@@ -385,218 +424,277 @@ export function TareasTaskCard({
           event.dataTransfer.effectAllowed = 'move'
         }}
         className={cn(
-          'border border-border bg-card p-3 shadow-sm transition-all',
-          canManageTask || canEditTask ? 'cursor-grab active:cursor-grabbing hover:border-primary/30' : 'opacity-90'
+          'group rounded-2xl border border-slate-200 bg-white px-3.5 py-3 shadow-[0_1px_0_rgba(15,23,42,0.04)] transition-all',
+          canManageTask || canEditTask
+            ? 'cursor-grab active:cursor-grabbing hover:-translate-y-[1px] hover:border-slate-300 hover:shadow-[0_10px_20px_-16px_rgba(15,23,42,0.35)]'
+            : 'opacity-95'
         )}
       >
-        <div className="flex items-start justify-between gap-2">
-          <div className="space-y-1">
-            <p className="text-sm font-semibold text-foreground">{task.titulo}</p>
-            {task.descripcion && (
-              <div className="text-xs text-muted-foreground leading-relaxed">
-                <LinkifiedText text={task.descripcion} />
-              </div>
+        <div className="flex items-start gap-2.5">
+          <button
+            type="button"
+            disabled={!canQuickComplete || busy}
+            onClick={() => {
+              if (!canQuickComplete || busy) return
+              void onMoveTask(task.id, 'completada')
+            }}
+            aria-label={canQuickComplete ? 'Marcar tarea como completada' : 'Tarea completada'}
+            title={canQuickComplete ? 'Marcar como completada' : 'Completada'}
+            className={cn(
+              'mt-0.5 h-5 w-5 shrink-0 rounded-full border-2 bg-white transition-all',
+              statusMarker(task.estado),
+              canQuickComplete
+                ? 'cursor-pointer hover:scale-105 hover:border-emerald-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-1'
+                : 'cursor-default',
+              task.estado === 'completada' && 'bg-emerald-50'
             )}
-          </div>
-          {(canManageTask || canEditTask) && <GripVertical className="h-4 w-4 text-muted-foreground shrink-0" />}
-        </div>
+          >
+            {task.estado === 'completada' && (
+              <Check className="mx-auto h-3 w-3 text-emerald-600" />
+            )}
+          </button>
 
-        {dueDate && dueDateLabel && dueDateMeta && (
-          <div className={cn('mt-3 flex items-center gap-2 rounded-md border px-2.5 py-2 text-xs font-semibold', dueDateMeta.tone)}>
-            <CalendarClock className="h-3.5 w-3.5 shrink-0" />
-            <span>Fecha límite: {dueDateLabel}</span>
-            <span className="ml-auto">{dueDateMeta.label}</span>
-          </div>
-        )}
+          <div className="min-w-0 flex-1 space-y-2">
+            <div className="flex items-start gap-2">
+              <div className="min-w-0 flex-1 space-y-1">
+                <p className="text-[15px] font-semibold leading-snug text-slate-900">
+                  {task.titulo}
+                </p>
+                {task.descripcion && (
+                  <div className="text-[13px] leading-relaxed text-slate-600">
+                    {isExpanded ? (
+                      <LinkifiedText text={task.descripcion} />
+                    ) : (
+                      truncateText(task.descripcion, 110)
+                    )}
+                  </div>
+                )}
 
-        <div className="mt-3 flex flex-wrap items-center gap-1.5">
-          <Badge className={cn('text-[11px] border', statusBadge(task.estado))}>
-            {statusLabel(task.estado)}
-          </Badge>
-          {backendWorkflowLabel && (
-            <Badge variant="outline" className="text-[11px]">
-              {backendWorkflowLabel}
-            </Badge>
-          )}
-          <Badge variant="outline" className="text-[11px]">
-            {assigneeName}
-          </Badge>
-          {task.direccion_responsable && (
-            <Badge variant="outline" className="text-[11px]">
-              Dirección: {task.direccion_responsable}
-            </Badge>
-          )}
-        </div>
+                {isExpanded ? (
+                  dueDate && dueDateLabel && dueDateMeta && (
+                    <div className={cn(
+                      'inline-flex max-w-full items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-semibold',
+                      dueDateMeta.tone
+                    )}>
+                      <CalendarClock className="h-3.5 w-3.5 shrink-0" />
+                      <span className="whitespace-nowrap">{dueDateLabel}</span>
+                      <span className="whitespace-nowrap opacity-80">· {dueDateMeta.label}</span>
+                    </div>
+                  )
+                ) : (
+                  <div className="inline-flex items-center gap-1.5 text-[12px] text-slate-600">
+                    <CalendarClock className="h-3.5 w-3.5 shrink-0" />
+                    <span className="font-medium">{dueDateCompactLabel}</span>
+                  </div>
+                )}
+              </div>
 
-        {subtasks.length > 0 && (
-          <div className="mt-3 space-y-1.5 rounded-md border border-border/70 bg-muted/30 p-2">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-              Subtareas
-            </p>
-            {subtasks.slice(0, 3).map((subtask) => (
-              <div
-                key={subtask.id}
-                className="flex items-center justify-between gap-2 rounded px-1 py-1 hover:bg-background/60"
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 rounded-full text-slate-500 hover:bg-slate-100"
+                onClick={() => setIsExpanded((prev) => !prev)}
+                aria-label={isExpanded ? 'Plegar tarea' : 'Desplegar tarea'}
+                title={isExpanded ? 'Plegar' : 'Desplegar'}
               >
-                <div className="flex min-w-0 items-center gap-1.5">
-                  <CheckCircle2 className={cn(
-                    'h-3.5 w-3.5 shrink-0',
-                    subtask.estado === 'completada' ? 'text-emerald-500' : 'text-muted-foreground'
-                  )} />
-                  <p className="truncate text-xs text-foreground">{subtask.titulo}</p>
+                <ChevronDown className={cn('h-4 w-4 transition-transform', isExpanded ? 'rotate-180' : 'rotate-0')} />
+              </Button>
+            </div>
+
+            {isExpanded && (
+              <>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <Badge className={cn('rounded-full text-[11px] border', statusBadge(task.estado))}>
+                    {statusLabel(task.estado)}
+                  </Badge>
+                  {backendWorkflowLabel && (
+                    <Badge variant="outline" className="rounded-full text-[11px] text-slate-600">
+                      {backendWorkflowLabel}
+                    </Badge>
+                  )}
+                  <Badge variant="outline" className="rounded-full text-[11px] text-slate-600">
+                    {assigneeName}
+                  </Badge>
+                  {task.direccion_responsable && (
+                    <Badge variant="outline" className="rounded-full text-[11px] text-slate-600">
+                      Dirección: {task.direccion_responsable}
+                    </Badge>
+                  )}
                 </div>
-                {canEditSubtask(subtask) && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6"
-                    onClick={() => openSubtaskEditor(subtask)}
-                  >
-                    <Pencil className="h-3.5 w-3.5" />
-                  </Button>
-                )}
-              </div>
-            ))}
-            {subtasks.length > 3 && (
-              <p className="px-1 text-[11px] text-muted-foreground">
-                +{subtasks.length - 3} subtareas más
-              </p>
-            )}
-          </div>
-        )}
 
-        {(canManageTask || canEditTask || canResolveCd) && (
-          <div className="mt-3 grid grid-cols-2 gap-1.5">
-            {(canManageTask || canEditTask) && (
-              <>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-8 text-[11px]"
-                  onClick={() => setOpenEdit(true)}
-                >
-                  <Pencil className="mr-1 h-3.5 w-3.5" />
-                  Editar
-                </Button>
-
-                <Select
-                  value={task.estado}
-                  onValueChange={(value) => {
-                    void onMoveTask(task.id, value as EstadoTareaKanban)
-                  }}
-                  disabled={busy}
-                >
-                  <SelectTrigger className="h-8 text-[11px] px-2">
-                    <SelectValue placeholder="Mover" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {STATUS_OPTIONS.map((status) => (
-                      <SelectItem key={status} value={status}>
-                        {statusLabel(status)}
-                      </SelectItem>
+                {subtasks.length > 0 && (
+                  <div className="space-y-1.5 rounded-xl border border-slate-200/90 bg-slate-50/70 px-2.5 py-2">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                      Subtareas
+                    </p>
+                    {subtasks.slice(0, 3).map((subtask) => (
+                      <div
+                        key={subtask.id}
+                        className="flex items-center justify-between gap-2 rounded-md px-1 py-0.5 transition-colors hover:bg-white"
+                      >
+                        <div className="flex min-w-0 items-center gap-1.5">
+                          <CheckCircle2 className={cn(
+                            'h-3.5 w-3.5 shrink-0',
+                            subtask.estado === 'completada' ? 'text-emerald-500' : 'text-slate-400'
+                          )} />
+                          <p className="truncate text-xs text-slate-700">{subtask.titulo}</p>
+                        </div>
+                        {canEditSubtask(subtask) && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 opacity-0 transition-opacity group-hover:opacity-100"
+                            onClick={() => openSubtaskEditor(subtask)}
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                      </div>
                     ))}
-                  </SelectContent>
-                </Select>
-              </>
-            )}
+                    {subtasks.length > 3 && (
+                      <p className="px-1 text-[11px] text-slate-500">
+                        +{subtasks.length - 3} subtareas más
+                      </p>
+                    )}
+                  </div>
+                )}
 
-            {canManageTask && (
-              <>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-8 text-[11px]"
-                  onClick={() => setOpenAssign(true)}
-                >
-                  <UserPlus className="mr-1 h-3.5 w-3.5" />
-                  Asignar
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-8 text-[11px]"
-                  onClick={() => setOpenHandoff(true)}
-                >
-                  <ArrowRightLeft className="mr-1 h-3.5 w-3.5" />
-                  Handoff
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-8 text-[11px]"
-                  onClick={() => setOpenNewSubtask(true)}
-                >
-                  <Plus className="mr-1 h-3.5 w-3.5" />
-                  Subtarea
-                </Button>
-                <Button
-                  type="button"
-                  variant="destructive"
-                  size="sm"
-                  className="h-8 text-[11px]"
-                  onClick={() => void onDeleteTask(task.id)}
-                >
-                  <Trash2 className="mr-1 h-3.5 w-3.5" />
-                  Borrar
-                </Button>
-                {canSendToCd && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="h-8 text-[11px]"
-                    onClick={() => setOpenSendToCd(true)}
-                  >
-                    <Send className="mr-1 h-3.5 w-3.5" />
-                    Enviar CD
-                  </Button>
+                {(canManageTask || canEditTask || canResolveCd) && (
+                  <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                    {(canManageTask || canEditTask) && (
+                      <Select
+                        value={task.estado}
+                        onValueChange={(value) => {
+                          void onMoveTask(task.id, value as EstadoTareaKanban)
+                        }}
+                        disabled={busy}
+                      >
+                        <SelectTrigger className="h-8 w-[140px] rounded-full border-slate-200 bg-slate-50 px-3 text-xs">
+                          <SelectValue placeholder="Estado" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {STATUS_OPTIONS.map((status) => (
+                            <SelectItem key={status} value={status}>
+                              {statusLabel(status)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+
+                    {(canManageTask || canEditTask) && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 rounded-full px-3 text-[11px] text-slate-700 hover:bg-slate-100"
+                        onClick={() => setOpenEdit(true)}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                        Editar
+                      </Button>
+                    )}
+
+                    {canOpenActionsMenu && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="ml-auto h-8 w-8 rounded-full text-slate-600 hover:bg-slate-100"
+                          >
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-52">
+                          {(canManageTask || canEditTask) && (
+                            <DropdownMenuItem onClick={() => setOpenEdit(true)}>
+                              <Pencil className="mr-2 h-4 w-4" />
+                              Editar tarea
+                            </DropdownMenuItem>
+                          )}
+
+                          {canManageTask && (
+                            <>
+                              <DropdownMenuItem onClick={() => setOpenAssign(true)}>
+                                <UserPlus className="mr-2 h-4 w-4" />
+                                Asignar
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => setOpenHandoff(true)}>
+                                <ArrowRightLeft className="mr-2 h-4 w-4" />
+                                Handoff
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => setOpenNewSubtask(true)}>
+                                <Plus className="mr-2 h-4 w-4" />
+                                Nueva subtarea
+                              </DropdownMenuItem>
+                              {canSendToCd && (
+                                <DropdownMenuItem onClick={() => setOpenSendToCd(true)}>
+                                  <Send className="mr-2 h-4 w-4" />
+                                  Enviar CD
+                                </DropdownMenuItem>
+                              )}
+                            </>
+                          )}
+
+                          {canResolveCd && (
+                            <>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setResolveApprove(true)
+                                  setOpenResolveCd(true)
+                                }}
+                              >
+                                <ThumbsUp className="mr-2 h-4 w-4" />
+                                Aprobar CD
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setResolveApprove(false)
+                                  setOpenResolveCd(true)
+                                }}
+                              >
+                                <ThumbsDown className="mr-2 h-4 w-4" />
+                                Observar/Rechazar
+                              </DropdownMenuItem>
+                            </>
+                          )}
+
+                          {canManageTask && (
+                            <>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                onClick={() => void onDeleteTask(task.id)}
+                                className="text-rose-700 focus:text-rose-800"
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Borrar
+                              </DropdownMenuItem>
+                            </>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
+                  </div>
+                )}
+
+                {!canManageTask && !canEditTask && !canResolveCd && (
+                  <div className="rounded-md border border-dashed border-slate-300 bg-slate-50 px-2 py-1.5 text-[11px] text-slate-500">
+                    Solo lectura
+                  </div>
                 )}
               </>
             )}
-
-            {canResolveCd && (
-              <>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-8 text-[11px]"
-                  onClick={() => {
-                    setResolveApprove(true)
-                    setOpenResolveCd(true)
-                  }}
-                >
-                  <ThumbsUp className="mr-1 h-3.5 w-3.5" />
-                  Aprobar CD
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-8 text-[11px]"
-                  onClick={() => {
-                    setResolveApprove(false)
-                    setOpenResolveCd(true)
-                  }}
-                >
-                  <ThumbsDown className="mr-1 h-3.5 w-3.5" />
-                  Observar/Rechazar
-                </Button>
-              </>
-            )}
           </div>
-        )}
 
-        {!canManageTask && !canEditTask && !canResolveCd && (
-          <div className="mt-3 rounded-md border border-dashed border-muted-foreground/35 bg-muted/30 px-2 py-1.5 text-[11px] text-muted-foreground">
-            Solo lectura
-          </div>
-        )}
+          {(canManageTask || canEditTask) && (
+            <GripVertical className="h-4 w-4 shrink-0 text-slate-400 opacity-0 transition-opacity group-hover:opacity-100" />
+          )}
+        </div>
       </Card>
 
       <Dialog open={openEdit} onOpenChange={setOpenEdit}>

@@ -6,10 +6,13 @@ import {
   FolderKanban,
   Loader2,
   Plus,
+  Redo2,
   RefreshCcw,
   ShieldAlert,
+  Undo2,
   UserCheck2,
 } from 'lucide-react'
+import { toast } from 'sonner'
 import { useAuth } from '@/hooks/useAuth'
 import { useTareas } from '@/hooks/useTareas'
 import { TareasProjectBoard } from '@/components/aile/tareas/tareas-project-board'
@@ -43,6 +46,18 @@ import type {
 } from '@/lib/types'
 
 const COLLAPSED_PROJECTS_STORAGE_KEY = 'aile:tareas:collapsed-projects:v1'
+const HISTORY_LIMIT = 30
+
+type HistoryEntry = {
+  label: string
+  undo: () => Promise<void>
+  redo: () => Promise<void>
+}
+
+function toErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message) return error.message
+  return 'Error desconocido'
+}
 
 export function TareasModulePage() {
   const { user } = useAuth()
@@ -65,6 +80,9 @@ export function TareasModulePage() {
   const [taskDirection, setTaskDirection] = useState<DireccionBase | ''>('')
   const [collapsedProjectIds, setCollapsedProjectIds] = useState<string[]>([])
   const [preferencesLoaded, setPreferencesLoaded] = useState(false)
+  const [undoStack, setUndoStack] = useState<HistoryEntry[]>([])
+  const [redoStack, setRedoStack] = useState<HistoryEntry[]>([])
+  const [historyBusy, setHistoryBusy] = useState(false)
 
   const activeProjects = useMemo(
     () => tareas.proyectos.filter((project) => project.activo !== false && project.estado !== 'archivado'),
@@ -199,6 +217,132 @@ export function TareasModulePage() {
     setTaskDirection('')
   }
 
+  const pushHistoryEntry = useCallback((entry: HistoryEntry) => {
+    setUndoStack((prev) => {
+      const next = [...prev, entry]
+      return next.length > HISTORY_LIMIT ? next.slice(next.length - HISTORY_LIMIT) : next
+    })
+    setRedoStack([])
+  }, [])
+
+  const handleUndo = useCallback(async () => {
+    if (historyBusy || undoStack.length === 0) return
+
+    const entry = undoStack[undoStack.length - 1]
+    setHistoryBusy(true)
+    try {
+      await entry.undo()
+      setUndoStack((prev) => prev.slice(0, -1))
+      setRedoStack((prev) => {
+        const next = [...prev, entry]
+        return next.length > HISTORY_LIMIT ? next.slice(next.length - HISTORY_LIMIT) : next
+      })
+      toast.success(`Deshecho: ${entry.label}`)
+    } catch (error) {
+      toast.error(`No se pudo deshacer: ${toErrorMessage(error)}`)
+    } finally {
+      setHistoryBusy(false)
+    }
+  }, [historyBusy, undoStack])
+
+  const handleRedo = useCallback(async () => {
+    if (historyBusy || redoStack.length === 0) return
+
+    const entry = redoStack[redoStack.length - 1]
+    setHistoryBusy(true)
+    try {
+      await entry.redo()
+      setRedoStack((prev) => prev.slice(0, -1))
+      setUndoStack((prev) => {
+        const next = [...prev, entry]
+        return next.length > HISTORY_LIMIT ? next.slice(next.length - HISTORY_LIMIT) : next
+      })
+      toast.success(`Rehecho: ${entry.label}`)
+    } catch (error) {
+      toast.error(`No se pudo rehacer: ${toErrorMessage(error)}`)
+    } finally {
+      setHistoryBusy(false)
+    }
+  }, [historyBusy, redoStack])
+
+  const moveTaskWithHistory = useCallback(async (taskId: string, status: EstadoTareaKanban) => {
+    const task = tareas.taskById.get(taskId)
+    if (!task) {
+      await tareas.moveTask(taskId, status)
+      return
+    }
+
+    const previousStatus = task.estado
+    if (previousStatus === status) return
+
+    await tareas.moveTask(taskId, status)
+
+    pushHistoryEntry({
+      label: `Mover "${task.titulo}"`,
+      undo: async () => {
+        await tareas.moveTask(taskId, previousStatus)
+      },
+      redo: async () => {
+        await tareas.moveTask(taskId, status)
+      },
+    })
+  }, [pushHistoryEntry, tareas])
+
+  const deleteTaskWithHistory = useCallback(async (taskId: string) => {
+    const task = tareas.taskById.get(taskId)
+    if (!task) {
+      await tareas.deleteTask(taskId)
+      return
+    }
+
+    const subtaskSnapshots = (tareas.subtasksByTaskId.get(taskId) || []).map((subtask) => ({
+      titulo: subtask.titulo,
+      descripcion: subtask.descripcion || undefined,
+      estado: subtask.estado,
+      asignado_usuario_id: subtask.asignado_usuario_id || null,
+      asignado_socio_id: subtask.asignado_socio_id || null,
+    }))
+
+    const createPayload = {
+      proyecto_id: task.proyecto_id,
+      titulo: task.titulo,
+      descripcion: task.descripcion || undefined,
+      estado: task.estado,
+      fecha_limite: task.fecha_limite || null,
+      direccion_responsable: task.direccion_responsable || null,
+      asignado_usuario_id: task.asignado_usuario_id || null,
+      asignado_socio_id: task.asignado_socio_id || null,
+    }
+
+    let currentTaskId = task.id
+    await tareas.deleteTask(taskId)
+
+    pushHistoryEntry({
+      label: `Eliminar "${task.titulo}"`,
+      undo: async () => {
+        const recreated = await tareas.createTask(createPayload) as { id?: string } | null
+        const recreatedId = recreated && typeof recreated.id === 'string' ? recreated.id : null
+        currentTaskId = recreatedId || currentTaskId
+
+        for (const subtask of subtaskSnapshots) {
+          await tareas.createSubtask({
+            tarea_id: currentTaskId,
+            titulo: subtask.titulo,
+            descripcion: subtask.descripcion,
+            estado: subtask.estado,
+            asignado_usuario_id: subtask.asignado_usuario_id,
+            asignado_socio_id: subtask.asignado_socio_id,
+          })
+        }
+      },
+      redo: async () => {
+        await tareas.deleteTask(currentTaskId)
+      },
+    })
+
+    toast.info('Puedes usar "Deshacer" para recuperar la tarea eliminada.')
+  }, [pushHistoryEntry, tareas])
+
   const submitNewProject = async () => {
     await tareas.createProject({
       nombre: projectName.trim(),
@@ -292,10 +436,10 @@ export function TareasModulePage() {
               }}
               onUpdateProject={tareas.updateProject}
               onDeleteProject={tareas.deleteProject}
-              onMoveTask={tareas.moveTask}
+              onMoveTask={moveTaskWithHistory}
               onAssignTask={tareas.assignTask}
               onHandoffTask={tareas.handoffTask}
-              onDeleteTask={tareas.deleteTask}
+              onDeleteTask={deleteTaskWithHistory}
               onUpdateTask={tareas.updateAssignedTask}
               onUpdateSubtask={tareas.updateAssignedSubtask}
               onCreateSubtask={tareas.createSubtask}
@@ -339,6 +483,24 @@ export function TareasModulePage() {
                 Nuevo proyecto
               </Button>
             )}
+            <Button
+              variant="outline"
+              onClick={() => void handleUndo()}
+              disabled={historyBusy || Boolean(tareas.mutatingAction) || undoStack.length === 0}
+              title={undoStack.length > 0 ? `Deshacer: ${undoStack[undoStack.length - 1].label}` : 'Nada para deshacer'}
+            >
+              <Undo2 className="mr-1.5 h-4 w-4" />
+              Deshacer
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => void handleRedo()}
+              disabled={historyBusy || Boolean(tareas.mutatingAction) || redoStack.length === 0}
+              title={redoStack.length > 0 ? `Rehacer: ${redoStack[redoStack.length - 1].label}` : 'Nada para rehacer'}
+            >
+              <Redo2 className="mr-1.5 h-4 w-4" />
+              Rehacer
+            </Button>
             <Button variant="outline" onClick={() => void tareas.fetchData()} disabled={tareas.loading}>
               <RefreshCcw className="mr-1.5 h-4 w-4" />
               Refrescar
