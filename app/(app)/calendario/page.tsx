@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useRef, useState } from 'react'
+import Link from 'next/link'
 import {
   CalendarDays,
   Clock3,
@@ -9,10 +10,10 @@ import {
   MapPin,
   Users,
   UserCheck,
-  Megaphone,
   ShieldAlert,
   Pencil,
   Trash2,
+  Plus,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuth } from '@/hooks/useAuth'
@@ -32,6 +33,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
 import type {
   CalendarioAlcanceReunion,
@@ -80,6 +89,8 @@ interface PlanningFormState {
   fechaFin: string
   estado: CalendarioEstadoPlanificacion
 }
+
+type AddDateComposerTab = 'reunion' | 'planificacion' | 'vencimiento'
 
 function toDateTimeLocalValue(date: Date): string {
   const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
@@ -552,13 +563,14 @@ export default function CalendarioPage() {
   const [invitados, setInvitados] = useState<string[]>([])
   const [editingMeetingId, setEditingMeetingId] = useState<string | null>(null)
   const [editingPlanningId, setEditingPlanningId] = useState<string | null>(null)
-  const scheduleFormRef = useRef<HTMLDivElement | null>(null)
-  const planningFormRef = useRef<HTMLDivElement | null>(null)
+  const [addDateComposerOpen, setAddDateComposerOpen] = useState(false)
+  const [addDateComposerTab, setAddDateComposerTab] = useState<AddDateComposerTab>('reunion')
   const titleInputRef = useRef<HTMLInputElement | null>(null)
   const planningTitleInputRef = useRef<HTMLInputElement | null>(null)
   const savingMeeting = creating || updating
   const savingPlanning = creatingPlanning || updatingPlanning || deletingPlanning
   const planningSubmitDisabled = savingPlanning || (editingPlanningId ? !canEditPlanning : !canCreatePlanning)
+  const canOpenDateComposer = canSchedule || canManagePlanning
 
   const selectedDayKey = dateKey(selectedDate)
 
@@ -775,22 +787,40 @@ export default function CalendarioPage() {
     setEditingPlanningId(null)
   }
 
-  const focusScheduleForm = () => {
+  const focusTitleByTab = (tab: AddDateComposerTab) => {
     window.requestAnimationFrame(() => {
-      scheduleFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
       window.setTimeout(() => {
-        titleInputRef.current?.focus()
-      }, 250)
+        if (tab === 'reunion') {
+          titleInputRef.current?.focus()
+          return
+        }
+
+        if (tab === 'planificacion') {
+          planningTitleInputRef.current?.focus()
+        }
+      }, 180)
     })
   }
 
-  const focusPlanningForm = () => {
-    window.requestAnimationFrame(() => {
-      planningFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      window.setTimeout(() => {
-        planningTitleInputRef.current?.focus()
-      }, 250)
-    })
+  const openDateComposer = (tab?: AddDateComposerTab) => {
+    const nextTab = tab || (canSchedule ? 'reunion' : canManagePlanning ? 'planificacion' : 'vencimiento')
+    setAddDateComposerTab(nextTab)
+    setAddDateComposerOpen(true)
+    focusTitleByTab(nextTab)
+  }
+
+  const openDateComposerForCreate = () => {
+    resetForm()
+    resetPlanningForm()
+    openDateComposer()
+  }
+
+  const handleDateComposerOpenChange = (open: boolean) => {
+    setAddDateComposerOpen(open)
+    if (!open) {
+      resetForm()
+      resetPlanningForm()
+    }
   }
 
   const startEditingMeeting = (reunion: ReunionCalendario) => {
@@ -814,9 +844,10 @@ export default function CalendarioPage() {
     setInvolucrados(nuevosInvolucrados)
     setInvitados(nuevosInvitados)
     setEditingMeetingId(reunion.id)
+    setEditingPlanningId(null)
     setSelectedDate(new Date(reunion.fecha_inicio))
     toast.success(`Editando: ${reunion.titulo}`)
-    focusScheduleForm()
+    openDateComposer('reunion')
   }
 
   const syncFormDateWithSelection = (day: Date) => {
@@ -891,6 +922,7 @@ export default function CalendarioPage() {
 
     setSelectedDate(new Date(inicio))
     resetForm()
+    setAddDateComposerOpen(false)
   }
 
   const startEditingPlanning = (planificacion: PlanificacionCalendario) => {
@@ -902,12 +934,13 @@ export default function CalendarioPage() {
       estado: planificacion.estado,
     })
     setEditingPlanningId(planificacion.id)
+    setEditingMeetingId(null)
     const startDate = parseDateOnly(planificacion.fecha_inicio)
     if (startDate) {
       setSelectedDate(startDate)
     }
     toast.success(`Editando fecha: ${planificacion.titulo}`)
-    focusPlanningForm()
+    openDateComposer('planificacion')
   }
 
   const syncPlanningFormDateWithSelection = (day: Date) => {
@@ -980,6 +1013,7 @@ export default function CalendarioPage() {
 
     setSelectedDate(new Date(inicio))
     resetPlanningForm(new Date(inicio))
+    setAddDateComposerOpen(false)
   }
 
   const handleDeletePlanning = async (planificacion: PlanificacionCalendario) => {
@@ -1032,11 +1066,22 @@ export default function CalendarioPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-2">
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">Calendario</h1>
-        <p className="text-sm text-muted-foreground">
-          Agenda única institucional con reuniones, planificación de comisión y vencimientos de tareas.
-        </p>
+      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div className="flex flex-col gap-2">
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">Calendario</h1>
+          <p className="text-sm text-muted-foreground">
+            Agenda única institucional con reuniones, planificación de comisión y vencimientos de tareas.
+          </p>
+        </div>
+
+        <Button
+          type="button"
+          onClick={openDateComposerForCreate}
+          className="md:mt-1 bg-[#4f0f86] hover:bg-[#430d72]"
+        >
+          <Plus className="h-4 w-4" />
+          + Agregar Fecha
+        </Button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -1264,130 +1309,36 @@ export default function CalendarioPage() {
             </CardContent>
           </Card>
 
-          {canManagePlanning ? (
-            <Card ref={planningFormRef} className="border border-cyan-200/70">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-cyan-900">
+          <Card className={cn(
+            'border-dashed',
+            canManagePlanning ? 'border-cyan-300 bg-cyan-50/30' : 'border-amber-200 bg-amber-50/40'
+          )}>
+            <CardHeader className="md:flex-row md:items-center md:justify-between">
+              <div className="space-y-1">
+                <CardTitle className={cn(
+                  'flex items-center gap-2',
+                  canManagePlanning ? 'text-cyan-900' : 'text-amber-900'
+                )}>
                   <Flag className="w-5 h-5" />
-                  {editingPlanningId ? 'Editar fecha de planificación' : 'Nueva fecha de planificación'}
+                  Carga de fechas
                 </CardTitle>
-                <CardDescription>
-                  {editingPlanningId
-                    ? 'Actualiza estado y rango de fechas de una actividad de comisión.'
-                    : 'Por defecto solo Comisión Directiva puede cargar fechas. Puedes habilitar otros roles desde Ajustes > Roles > Permisos del módulo Calendario.'}
+                <CardDescription className={canManagePlanning ? 'text-cyan-800' : 'text-amber-700'}>
+                  {canManagePlanning
+                    ? 'Usa "+ Agregar Fecha" para crear reuniones, planificación anual y coordinar vencimientos.'
+                    : 'Tu rol no puede crear o editar planificación, pero puedes consultar fechas y vencimientos.'}
                 </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-5">
-                {!editingPlanningId && !canCreatePlanning && (
-                  <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3 text-sm text-cyan-800">
-                    Tu rol puede editar o eliminar fechas existentes, pero no crear nuevas.
-                  </div>
-                )}
-
-                <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px]">
-                  <div className="space-y-2">
-                    <Label htmlFor="titulo-planificacion">Actividad</Label>
-                    <Input
-                      id="titulo-planificacion"
-                      ref={planningTitleInputRef}
-                      placeholder="Ej.: Jornada de liderazgo violeta"
-                      value={planningForm.titulo}
-                      onChange={(e) => setPlanningForm((prev) => ({ ...prev, titulo: e.target.value }))}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="estado-planificacion">Estado</Label>
-                    <Select
-                      value={planningForm.estado}
-                      onValueChange={(value) => setPlanningForm((prev) => ({
-                        ...prev,
-                        estado: value as CalendarioEstadoPlanificacion,
-                      }))}
-                    >
-                      <SelectTrigger id="estado-planificacion">
-                        <SelectValue placeholder="Seleccionar estado" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="tentativo">Tentativa</SelectItem>
-                        <SelectItem value="definitivo">Definitiva</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="descripcion-planificacion">Descripción</Label>
-                  <Textarea
-                    id="descripcion-planificacion"
-                    rows={3}
-                    placeholder="Objetivo, observaciones o notas de seguimiento."
-                    value={planningForm.descripcion}
-                    onChange={(e) => setPlanningForm((prev) => ({ ...prev, descripcion: e.target.value }))}
-                  />
-                </div>
-
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="inicio-planificacion">Fecha de inicio</Label>
-                    <Input
-                      id="inicio-planificacion"
-                      type="date"
-                      value={planningForm.fechaInicio}
-                      onChange={(e) => {
-                        const value = e.target.value
-                        setPlanningForm((prev) => ({ ...prev, fechaInicio: value }))
-                        const parsed = parseDateOnly(value)
-                        if (parsed) {
-                          setSelectedDate(parsed)
-                        }
-                      }}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="fin-planificacion">Fecha de finalización</Label>
-                    <Input
-                      id="fin-planificacion"
-                      type="date"
-                      value={planningForm.fechaFin}
-                      onChange={(e) => setPlanningForm((prev) => ({ ...prev, fechaFin: e.target.value }))}
-                    />
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    onClick={() => void submitPlanning()}
-                    disabled={planningSubmitDisabled}
-                    className="bg-cyan-700 hover:bg-cyan-800 text-white"
-                  >
-                    {savingPlanning
-                      ? (editingPlanningId ? 'Guardando cambios...' : 'Guardando fecha...')
-                      : (editingPlanningId ? 'Guardar cambios' : 'Guardar fecha')}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => resetPlanningForm()}
-                    disabled={savingPlanning}
-                  >
-                    {editingPlanningId ? 'Cancelar edición' : 'Limpiar'}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ) : (
-            <Card className="border-amber-200 bg-amber-50/40">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-amber-900">
-                  <ShieldAlert className="w-5 h-5" />
-                  Edición de planificación restringida
-                </CardTitle>
-                <CardDescription className="text-amber-700">
-                  Solo la Comisión Directiva puede crear, editar o eliminar fechas de planificación.
-                </CardDescription>
-              </CardHeader>
-            </Card>
-          )}
+              </div>
+              <Button
+                type="button"
+                variant={canManagePlanning ? 'default' : 'outline'}
+                className={canManagePlanning ? 'bg-cyan-700 hover:bg-cyan-800 text-white' : ''}
+                onClick={() => openDateComposer(canManagePlanning ? 'planificacion' : 'vencimiento')}
+              >
+                <Plus className="h-4 w-4" />
+                + Agregar Fecha
+              </Button>
+            </CardHeader>
+          </Card>
         </>
       )}
 
@@ -1441,208 +1392,382 @@ export default function CalendarioPage() {
         </CardContent>
       </Card>
 
-      {canSchedule ? (
-        <Card ref={scheduleFormRef} className="border border-violet-200/70">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-violet-900">
-              <Megaphone className="w-5 h-5" />
-              {editingMeetingId ? 'Editar reunión' : 'Agendar reunión'}
-            </CardTitle>
-            <CardDescription>
-              {editingMeetingId
-                ? 'Actualiza datos, participantes y alcance de una reunión existente.'
-                : 'Disponible para la Comisión Directiva (incluye control global).'}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-5">
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="titulo-reunion">Título</Label>
-                <Input
-                  id="titulo-reunion"
-                  ref={titleInputRef}
-                  placeholder="Ej.: Reunión mensual de comisión"
-                  value={form.titulo}
-                  onChange={(e) => setForm((prev) => ({ ...prev, titulo: e.target.value }))}
-                />
-              </div>
+      <Dialog open={addDateComposerOpen} onOpenChange={handleDateComposerOpenChange}>
+        <DialogContent className="sm:max-w-5xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-[#4f0f86]">
+              <Plus className="h-5 w-5" />
+              + Agregar Fecha
+            </DialogTitle>
+            <DialogDescription>
+              Crea reuniones, fechas de planificación anual y administra vencimientos desde un único flujo.
+            </DialogDescription>
+          </DialogHeader>
 
-              <div className="space-y-2">
-                <Label htmlFor="lugar-reunion">Lugar</Label>
-                <Input
-                  id="lugar-reunion"
-                  placeholder="Sede central / Meet / Zoom"
-                  value={form.lugar}
-                  onChange={(e) => setForm((prev) => ({ ...prev, lugar: e.target.value }))}
-                />
-              </div>
-            </div>
+          <Tabs
+            value={addDateComposerTab}
+            onValueChange={(value) => {
+              const nextTab = value as AddDateComposerTab
+              setAddDateComposerTab(nextTab)
+              focusTitleByTab(nextTab)
+            }}
+            className="space-y-4"
+          >
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="reunion">Reunión</TabsTrigger>
+              <TabsTrigger value="planificacion">Planificación</TabsTrigger>
+              <TabsTrigger value="vencimiento">Vencimiento</TabsTrigger>
+            </TabsList>
 
-            <div className="space-y-2">
-              <Label htmlFor="descripcion-reunion">Descripción</Label>
-              <Textarea
-                id="descripcion-reunion"
-                rows={3}
-                placeholder="Temario, objetivos y notas previas"
-                value={form.descripcion}
-                onChange={(e) => setForm((prev) => ({ ...prev, descripcion: e.target.value }))}
-              />
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-3">
-              <div className="space-y-2">
-                <Label htmlFor="inicio-reunion">Inicio</Label>
-                <Input
-                  id="inicio-reunion"
-                  type="datetime-local"
-                  value={form.fechaInicio}
-                  onChange={(e) => {
-                    const value = e.target.value
-                    setForm((prev) => ({ ...prev, fechaInicio: value }))
-
-                    const parsed = parseLocalDateTime(value)
-                    if (parsed) {
-                      setSelectedDate(parsed)
-                    }
-                  }}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="fin-reunion">Fin</Label>
-                <Input
-                  id="fin-reunion"
-                  type="datetime-local"
-                  value={form.fechaFin}
-                  onChange={(e) => setForm((prev) => ({ ...prev, fechaFin: e.target.value }))}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="alcance-reunion">Alcance</Label>
-                <Select
-                  value={form.alcance}
-                  onValueChange={(value) => handleScopeChange(value as CalendarioAlcanceReunion)}
-                >
-                  <SelectTrigger id="alcance-reunion">
-                    <SelectValue placeholder="Seleccionar alcance" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="comision_directiva">Comisión Directiva</SelectItem>
-                    <SelectItem value="general">General (todos los socios)</SelectItem>
-                    <SelectItem value="personalizada">Personalizada</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {form.alcance === 'comision_directiva' && (
-              <div className="rounded-lg border border-violet-200 bg-violet-50 p-3 text-sm text-violet-800">
-                Para este tipo, el sistema invitará solamente a miembros de Comisión Directiva.
-              </div>
-            )}
-
-            {form.alcance === 'general' && (
-              <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
-                Se invitará automáticamente a todos los socios activos.
-              </div>
-            )}
-
-            {form.alcance === 'personalizada' && (
-              <div className="space-y-3">
-                <Label htmlFor="buscar-usuario">Seleccionar involucrados e invitados</Label>
-                <Input
-                  id="buscar-usuario"
-                  placeholder="Buscar por nombre, email o rol institucional..."
-                  value={searchUsers}
-                  onChange={(e) => setSearchUsers(e.target.value)}
-                />
-
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="rounded-lg border">
-                    <div className="border-b px-3 py-2 text-sm font-medium text-foreground">
-                      Involucrados ({involucrados.length})
-                    </div>
-                    <ScrollArea className="h-48 px-2 py-2">
-                      <div className="space-y-1">
-                        {sociosFiltrados.map((socio) => (
-                          <button
-                            key={`involucrado-${socio.usuario_id}`}
-                            type="button"
-                            onClick={() => toggleInvolucrado(socio.usuario_id)}
-                            className={cn(
-                              'w-full rounded-md px-2 py-1.5 text-left text-sm transition-colors',
-                              involucrados.includes(socio.usuario_id)
-                                ? 'bg-violet-100 text-violet-900'
-                                : 'hover:bg-muted'
-                            )}
-                          >
-                            <p className="font-medium">{socio.nombre} {socio.apellido}</p>
-                            <p className="text-xs text-muted-foreground">{socio.rol_aile || 'Sin rol institucional'}</p>
-                          </button>
-                        ))}
-                      </div>
-                    </ScrollArea>
-                  </div>
-
-                  <div className="rounded-lg border">
-                    <div className="border-b px-3 py-2 text-sm font-medium text-foreground">
-                      Invitados ({invitados.length})
-                    </div>
-                    <ScrollArea className="h-48 px-2 py-2">
-                      <div className="space-y-1">
-                        {sociosFiltrados.map((socio) => (
-                          <button
-                            key={`invitado-${socio.usuario_id}`}
-                            type="button"
-                            onClick={() => toggleInvitado(socio.usuario_id)}
-                            className={cn(
-                              'w-full rounded-md px-2 py-1.5 text-left text-sm transition-colors',
-                              invitados.includes(socio.usuario_id)
-                                ? 'bg-cyan-100 text-cyan-900'
-                                : 'hover:bg-muted'
-                            )}
-                          >
-                            <p className="font-medium">{socio.nombre} {socio.apellido}</p>
-                            <p className="text-xs text-muted-foreground">{socio.rol_aile || 'Sin rol institucional'}</p>
-                          </button>
-                        ))}
-                      </div>
-                    </ScrollArea>
-                  </div>
+            <TabsContent value="reunion" className="space-y-5">
+              {!canSchedule ? (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                  Solo la Comisión Directiva puede crear o editar reuniones.
                 </div>
-              </div>
-            )}
+              ) : (
+                <>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="titulo-reunion">Título</Label>
+                      <Input
+                        id="titulo-reunion"
+                        ref={titleInputRef}
+                        placeholder="Ej.: Reunión mensual de comisión"
+                        value={form.titulo}
+                        onChange={(e) => setForm((prev) => ({ ...prev, titulo: e.target.value }))}
+                      />
+                    </div>
 
-            <div className="flex flex-wrap gap-2">
-              <Button
-                onClick={() => void submitMeeting()}
-                disabled={savingMeeting}
-                className="bg-[#6314a7] hover:bg-[#53108c]"
-              >
-                {savingMeeting
-                  ? (editingMeetingId ? 'Guardando cambios...' : 'Agendando...')
-                  : (editingMeetingId ? 'Guardar cambios y notificar' : 'Agendar y notificar')}
+                    <div className="space-y-2">
+                      <Label htmlFor="lugar-reunion">Lugar</Label>
+                      <Input
+                        id="lugar-reunion"
+                        placeholder="Sede central / Meet / Zoom"
+                        value={form.lugar}
+                        onChange={(e) => setForm((prev) => ({ ...prev, lugar: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="descripcion-reunion">Descripción</Label>
+                    <Textarea
+                      id="descripcion-reunion"
+                      rows={3}
+                      placeholder="Temario, objetivos y notas previas"
+                      value={form.descripcion}
+                      onChange={(e) => setForm((prev) => ({ ...prev, descripcion: e.target.value }))}
+                    />
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <div className="space-y-2">
+                      <Label htmlFor="inicio-reunion">Inicio</Label>
+                      <Input
+                        id="inicio-reunion"
+                        type="datetime-local"
+                        value={form.fechaInicio}
+                        onChange={(e) => {
+                          const value = e.target.value
+                          setForm((prev) => ({ ...prev, fechaInicio: value }))
+
+                          const parsed = parseLocalDateTime(value)
+                          if (parsed) {
+                            setSelectedDate(parsed)
+                          }
+                        }}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="fin-reunion">Fin</Label>
+                      <Input
+                        id="fin-reunion"
+                        type="datetime-local"
+                        value={form.fechaFin}
+                        onChange={(e) => setForm((prev) => ({ ...prev, fechaFin: e.target.value }))}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="alcance-reunion">Alcance</Label>
+                      <Select
+                        value={form.alcance}
+                        onValueChange={(value) => handleScopeChange(value as CalendarioAlcanceReunion)}
+                      >
+                        <SelectTrigger id="alcance-reunion">
+                          <SelectValue placeholder="Seleccionar alcance" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="comision_directiva">Comisión Directiva</SelectItem>
+                          <SelectItem value="general">General (todos los socios)</SelectItem>
+                          <SelectItem value="personalizada">Personalizada</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  {form.alcance === 'comision_directiva' && (
+                    <div className="rounded-lg border border-violet-200 bg-violet-50 p-3 text-sm text-violet-800">
+                      Para este tipo, el sistema invitará solamente a miembros de Comisión Directiva.
+                    </div>
+                  )}
+
+                  {form.alcance === 'general' && (
+                    <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
+                      Se invitará automáticamente a todos los socios activos.
+                    </div>
+                  )}
+
+                  {form.alcance === 'personalizada' && (
+                    <div className="space-y-3">
+                      <Label htmlFor="buscar-usuario">Seleccionar involucrados e invitados</Label>
+                      <Input
+                        id="buscar-usuario"
+                        placeholder="Buscar por nombre, email o rol institucional..."
+                        value={searchUsers}
+                        onChange={(e) => setSearchUsers(e.target.value)}
+                      />
+
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <div className="rounded-lg border">
+                          <div className="border-b px-3 py-2 text-sm font-medium text-foreground">
+                            Involucrados ({involucrados.length})
+                          </div>
+                          <ScrollArea className="h-48 px-2 py-2">
+                            <div className="space-y-1">
+                              {sociosFiltrados.map((socio) => (
+                                <button
+                                  key={`involucrado-${socio.usuario_id}`}
+                                  type="button"
+                                  onClick={() => toggleInvolucrado(socio.usuario_id)}
+                                  className={cn(
+                                    'w-full rounded-md px-2 py-1.5 text-left text-sm transition-colors',
+                                    involucrados.includes(socio.usuario_id)
+                                      ? 'bg-violet-100 text-violet-900'
+                                      : 'hover:bg-muted'
+                                  )}
+                                >
+                                  <p className="font-medium">{socio.nombre} {socio.apellido}</p>
+                                  <p className="text-xs text-muted-foreground">{socio.rol_aile || 'Sin rol institucional'}</p>
+                                </button>
+                              ))}
+                            </div>
+                          </ScrollArea>
+                        </div>
+
+                        <div className="rounded-lg border">
+                          <div className="border-b px-3 py-2 text-sm font-medium text-foreground">
+                            Invitados ({invitados.length})
+                          </div>
+                          <ScrollArea className="h-48 px-2 py-2">
+                            <div className="space-y-1">
+                              {sociosFiltrados.map((socio) => (
+                                <button
+                                  key={`invitado-${socio.usuario_id}`}
+                                  type="button"
+                                  onClick={() => toggleInvitado(socio.usuario_id)}
+                                  className={cn(
+                                    'w-full rounded-md px-2 py-1.5 text-left text-sm transition-colors',
+                                    invitados.includes(socio.usuario_id)
+                                      ? 'bg-cyan-100 text-cyan-900'
+                                      : 'hover:bg-muted'
+                                  )}
+                                >
+                                  <p className="font-medium">{socio.nombre} {socio.apellido}</p>
+                                  <p className="text-xs text-muted-foreground">{socio.rol_aile || 'Sin rol institucional'}</p>
+                                </button>
+                              ))}
+                            </div>
+                          </ScrollArea>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      onClick={() => void submitMeeting()}
+                      disabled={savingMeeting}
+                      className="bg-[#6314a7] hover:bg-[#53108c]"
+                    >
+                      {savingMeeting
+                        ? (editingMeetingId ? 'Guardando cambios...' : 'Agendando...')
+                        : (editingMeetingId ? 'Guardar cambios y notificar' : 'Agendar y notificar')}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        resetForm()
+                        if (editingMeetingId) {
+                          setAddDateComposerOpen(false)
+                        }
+                      }}
+                      disabled={savingMeeting}
+                    >
+                      {editingMeetingId ? 'Cancelar edición' : 'Limpiar'}
+                    </Button>
+                  </div>
+                </>
+              )}
+            </TabsContent>
+
+            <TabsContent value="planificacion" className="space-y-5">
+              {!planningAvailable ? (
+                <div className="space-y-3 rounded-lg border border-amber-300 bg-amber-50 p-4">
+                  <p className="text-sm text-amber-900">
+                    El módulo de planificación anual no está inicializado. Ejecuta la migración
+                    <code className="mx-1">035_calendar_planning_module.sql</code>.
+                  </p>
+                  <Button
+                    variant="outline"
+                    className="border-amber-300 text-amber-900 hover:bg-amber-100"
+                    onClick={retryCalendarCheck}
+                  >
+                    Reintentar validación
+                  </Button>
+                </div>
+              ) : !canManagePlanning ? (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                  Solo la Comisión Directiva puede crear, editar o eliminar fechas de planificación.
+                </div>
+              ) : (
+                <>
+                  {!editingPlanningId && !canCreatePlanning && (
+                    <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3 text-sm text-cyan-800">
+                      Tu rol puede editar o eliminar fechas existentes, pero no crear nuevas.
+                    </div>
+                  )}
+
+                  <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px]">
+                    <div className="space-y-2">
+                      <Label htmlFor="titulo-planificacion">Actividad</Label>
+                      <Input
+                        id="titulo-planificacion"
+                        ref={planningTitleInputRef}
+                        placeholder="Ej.: Jornada de liderazgo violeta"
+                        value={planningForm.titulo}
+                        onChange={(e) => setPlanningForm((prev) => ({ ...prev, titulo: e.target.value }))}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="estado-planificacion">Estado</Label>
+                      <Select
+                        value={planningForm.estado}
+                        onValueChange={(value) => setPlanningForm((prev) => ({
+                          ...prev,
+                          estado: value as CalendarioEstadoPlanificacion,
+                        }))}
+                      >
+                        <SelectTrigger id="estado-planificacion">
+                          <SelectValue placeholder="Seleccionar estado" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="tentativo">Tentativa</SelectItem>
+                          <SelectItem value="definitivo">Definitiva</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="descripcion-planificacion">Descripción</Label>
+                    <Textarea
+                      id="descripcion-planificacion"
+                      rows={3}
+                      placeholder="Objetivo, observaciones o notas de seguimiento."
+                      value={planningForm.descripcion}
+                      onChange={(e) => setPlanningForm((prev) => ({ ...prev, descripcion: e.target.value }))}
+                    />
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="inicio-planificacion">Fecha de inicio</Label>
+                      <Input
+                        id="inicio-planificacion"
+                        type="date"
+                        value={planningForm.fechaInicio}
+                        onChange={(e) => {
+                          const value = e.target.value
+                          setPlanningForm((prev) => ({ ...prev, fechaInicio: value }))
+                          const parsed = parseDateOnly(value)
+                          if (parsed) {
+                            setSelectedDate(parsed)
+                          }
+                        }}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="fin-planificacion">Fecha de finalización</Label>
+                      <Input
+                        id="fin-planificacion"
+                        type="date"
+                        value={planningForm.fechaFin}
+                        onChange={(e) => setPlanningForm((prev) => ({ ...prev, fechaFin: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      onClick={() => void submitPlanning()}
+                      disabled={planningSubmitDisabled}
+                      className="bg-cyan-700 hover:bg-cyan-800 text-white"
+                    >
+                      {savingPlanning
+                        ? (editingPlanningId ? 'Guardando cambios...' : 'Guardando fecha...')
+                        : (editingPlanningId ? 'Guardar cambios' : 'Guardar fecha')}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        resetPlanningForm()
+                        if (editingPlanningId) {
+                          setAddDateComposerOpen(false)
+                        }
+                      }}
+                      disabled={savingPlanning}
+                    >
+                      {editingPlanningId ? 'Cancelar edición' : 'Limpiar'}
+                    </Button>
+                  </div>
+                </>
+              )}
+            </TabsContent>
+
+            <TabsContent value="vencimiento" className="space-y-4">
+              <div className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900">
+                Los vencimientos de tareas se gestionan desde el módulo <strong>Tareas</strong>.
+                Cualquier fecha límite que cargues allí aparece automáticamente en este calendario.
+              </div>
+
+              {!canOpenDateComposer && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                  Tu rol no tiene permisos para crear reuniones o planificación.
+                </div>
+              )}
+
+              {tasksLoading ? (
+                <p className="text-sm text-muted-foreground">Cargando vencimientos...</p>
+              ) : proximosVencimientosTareas.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No hay tareas activas con fecha límite.</p>
+              ) : (
+                <div className="space-y-3">
+                  {proximosVencimientosTareas.slice(0, 3).map((tarea) => (
+                    <TareaVencimientoCard key={`composer-task-${tarea.id}`} tarea={tarea} compact />
+                  ))}
+                </div>
+              )}
+
+              <Button asChild className="bg-[#4f0f86] hover:bg-[#430d72]">
+                <Link href="/tareas">Ir a Tareas</Link>
               </Button>
-              <Button variant="outline" onClick={resetForm} disabled={savingMeeting}>
-                {editingMeetingId ? 'Cancelar edición' : 'Limpiar'}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      ) : (
-        <Card className="border-amber-200 bg-amber-50/40">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-amber-900">
-              <ShieldAlert className="w-5 h-5" />
-              Agendamiento restringido
-            </CardTitle>
-            <CardDescription className="text-amber-700">
-              Solo la Comisión Directiva puede crear o editar reuniones.
-            </CardDescription>
-          </CardHeader>
-        </Card>
-      )}
+            </TabsContent>
+          </Tabs>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
