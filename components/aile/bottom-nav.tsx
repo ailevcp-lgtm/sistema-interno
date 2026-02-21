@@ -45,7 +45,7 @@ export function BottomNav({ currentPage, onNavigate }: BottomNavProps) {
 
   const visibleItems = navItems.filter((item) => {
     if ('allowOwnDebtView' in item && item.allowOwnDebtView) {
-      return hasPermission(item.recurso, "ver") || Boolean(user?.socio_id)
+      return hasPermission(item.recurso, "ver") || Boolean(user)
     }
     return hasPermission(item.recurso, "ver")
   })

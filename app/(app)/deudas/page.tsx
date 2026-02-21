@@ -67,7 +67,7 @@ export default function DeudasPage() {
   const router = useRouter()
   const { user, hasPermission } = useAuth()
   const canViewAllDebt = !!user && hasPermission('deudas', 'ver')
-  const canViewOwnDebt = !!user?.socio_id
+  const canViewOwnDebt = !!user
   const cuotasScopeSocioId = canViewAllDebt ? undefined : (user?.socio_id || '__pending_auth__')
 
   const {

@@ -146,6 +146,8 @@ export const COMISION_DIRECTIVA_ROLES_AILE = [
   'Vocal Titular',
 ] as const
 
+export const ROLE_PERMISSIONS_UPDATED_EVENT = 'aile:role-permissions-updated'
+
 export function canAccessReintegrosModule(rol: Rol, rolAile?: string | null): boolean {
   if (isGlobalManager(rol, rolAile)) return true
   if (!rolAile) return false
@@ -177,9 +179,13 @@ const INSTITUTIONAL_GLOBAL_MANAGER_ROLES = new Set(
   COMISION_DIRECTIVA_ROLES_AILE.map((roleName) => normalizeInstitutionalRole(roleName))
 )
 
-const FINANZAS_ROLE_ALIASES = [
+const FINANZAS_DEBT_MANAGER_ROLE_ALIASES = [
   'director de finanzas',
   'directora de finanzas',
+]
+
+const FINANZAS_OPERATION_ROLE_ALIASES = [
+  ...FINANZAS_DEBT_MANAGER_ROLE_ALIASES,
   'miembro de finanzas',
   'tesorero',
 ]
@@ -207,12 +213,18 @@ for (const roleName of RRHH_ROLE_ALIASES) {
   }
 }
 
-for (const roleName of FINANZAS_ROLE_ALIASES) {
+for (const roleName of FINANZAS_OPERATION_ROLE_ALIASES) {
   INSTITUTIONAL_ROLE_OVERRIDES[roleName] = {
-    deudas: ['ver', 'editar'],
     finanzas: ['ver'],
     tesoreria: ['ver'],
     reintegros: ['ver', 'crear'],
+  }
+}
+
+for (const roleName of FINANZAS_DEBT_MANAGER_ROLE_ALIASES) {
+  INSTITUTIONAL_ROLE_OVERRIDES[roleName] = {
+    ...INSTITUTIONAL_ROLE_OVERRIDES[roleName],
+    deudas: ['ver', 'editar'],
   }
 }
 

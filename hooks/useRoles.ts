@@ -3,7 +3,12 @@ import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
 import { runWithRecovery } from '@/lib/async-recovery'
 import { useResumeRefresh } from '@/hooks/useResumeRefresh'
-import { PERMISSION_ACTIONS, PERMISSION_RESOURCES, normalizeInstitutionalRole } from '@/lib/constants'
+import {
+  PERMISSION_ACTIONS,
+  PERMISSION_RESOURCES,
+  ROLE_PERMISSIONS_UPDATED_EVENT,
+  normalizeInstitutionalRole,
+} from '@/lib/constants'
 import type { Accion, Recurso } from '@/lib/types'
 
 export type RolAileDefinition = {
@@ -102,6 +107,9 @@ export function useRoles() {
       if (error) throw error
 
       await fetchPermissionOverrides()
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event(ROLE_PERMISSIONS_UPDATED_EVENT))
+      }
       toast.success('Permisos del rol actualizados')
     } catch (error) {
       console.error('Error saving role permissions:', error)
@@ -120,6 +128,9 @@ export function useRoles() {
       if (error) throw error
 
       setPermissionOverrides((prev) => prev.filter((row) => row.rol_aile_definition_id !== roleId))
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event(ROLE_PERMISSIONS_UPDATED_EVENT))
+      }
       toast.success('Permisos restablecidos a la configuracion base')
     } catch (error) {
       console.error('Error resetting role permissions:', error)

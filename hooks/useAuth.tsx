@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import type { Rol, Recurso, Accion } from '@/lib/types'
 import {
   hasPermission as resolvePermission,
+  ROLE_PERMISSIONS_UPDATED_EVENT,
   normalizeInstitutionalRole,
   type RolePermissionOverridesMap,
 } from '@/lib/constants'
@@ -317,6 +318,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     setRoleSimulationState(readRoleSimulationFromStorage())
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const handlePermissionOverridesUpdated = () => {
+      void (async () => {
+        try {
+          const dynamicPermissionOverrides = await runWithRecovery(
+            () => fetchRolePermissionOverrides(),
+            { label: 'auth role permission overrides refresh', timeoutMs: 12_000, retries: 2, retryDelayMs: 400 }
+          )
+          setPermissionOverrides(dynamicPermissionOverrides)
+        } catch (error) {
+          console.error('Error refreshing role permission overrides:', error)
+        }
+      })()
+    }
+
+    window.addEventListener(ROLE_PERMISSIONS_UPDATED_EVENT, handlePermissionOverridesUpdated)
+    return () => {
+      window.removeEventListener(ROLE_PERMISSIONS_UPDATED_EVENT, handlePermissionOverridesUpdated)
+    }
   }, [])
 
   useEffect(() => {

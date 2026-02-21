@@ -34,8 +34,8 @@ import {
 
 export default function MiCuentaPage() {
   const { user } = useAuth()
-  const socioId = user?.socio_id
-  const { allCuotas, summary } = useCuotas(socioId)
+  const cuotasScopeSocioId = user?.socio_id || '__pending_auth__'
+  const { allCuotas, summary } = useCuotas(cuotasScopeSocioId)
 
   const [showDetalle, setShowDetalle] = useState(false)
   const [selectedCuota, setSelectedCuota] = useState<Cuota | null>(null)
