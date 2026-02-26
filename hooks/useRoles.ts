@@ -25,9 +25,28 @@ export type RolePermissionOverride = {
 }
 
 export type RolePermissionMatrix = Record<Recurso, Record<Accion, boolean>>
+export type RoleTaskScopeMode = 'own_direction' | 'all_directions'
+
+export type RoleTaskScopeOverride = {
+  id: string
+  rol_aile_definition_id: string
+  scope_mode: RoleTaskScopeMode
+  allow_assigned_cross_direction: boolean
+}
+
+export type RoleTaskScopeSettings = {
+  scopeMode: RoleTaskScopeMode
+  allowAssignedCrossDirection: boolean
+}
 
 type RolePermissionOverridesById = Record<string, Partial<Record<Recurso, Partial<Record<Accion, boolean>>>>>
 type RolePermissionOverridesByName = Record<string, Partial<Record<Recurso, Partial<Record<Accion, boolean>>>>>
+type RoleTaskScopeOverridesById = Record<string, RoleTaskScopeSettings>
+
+const DEFAULT_ROLE_TASK_SCOPE_SETTINGS: RoleTaskScopeSettings = {
+  scopeMode: 'own_direction',
+  allowAssignedCrossDirection: true,
+}
 
 function buildEmptyPermissionMatrix(defaultValue = false): RolePermissionMatrix {
   const matrix = {} as RolePermissionMatrix
@@ -45,8 +64,10 @@ function buildEmptyPermissionMatrix(defaultValue = false): RolePermissionMatrix 
 export function useRoles() {
   const [roles, setRoles] = useState<RolAileDefinition[]>([])
   const [permissionOverrides, setPermissionOverrides] = useState<RolePermissionOverride[]>([])
+  const [taskScopeOverrides, setTaskScopeOverrides] = useState<RoleTaskScopeOverride[]>([])
   const [loading, setLoading] = useState(true)
   const [permissionsLoading, setPermissionsLoading] = useState(true)
+  const [taskScopeLoading, setTaskScopeLoading] = useState(true)
 
   const fetchRoles = useCallback(async () => {
     try {
@@ -86,6 +107,27 @@ export function useRoles() {
       toast.error('Error al cargar permisos por rol')
     } finally {
       setPermissionsLoading(false)
+    }
+  }, [])
+
+  const fetchRoleTaskScopeOverrides = useCallback(async () => {
+    try {
+      setTaskScopeLoading(true)
+      const { data, error } = await runWithRecovery(
+        () => supabase
+          .from('role_task_scope_overrides')
+          .select('id, rol_aile_definition_id, scope_mode, allow_assigned_cross_direction')
+          .order('rol_aile_definition_id'),
+        { label: 'alcance de tareas por rol' }
+      )
+
+      if (error) throw error
+      setTaskScopeOverrides((data || []) as RoleTaskScopeOverride[])
+    } catch (error) {
+      console.error('Error fetching role task scope overrides:', error)
+      toast.error('Error al cargar alcance de tareas por rol')
+    } finally {
+      setTaskScopeLoading(false)
     }
   }, [])
 
@@ -135,6 +177,51 @@ export function useRoles() {
     } catch (error) {
       console.error('Error resetting role permissions:', error)
       toast.error('Error al restablecer permisos del rol')
+      throw error
+    }
+  }, [])
+
+  const saveRoleTaskScope = useCallback(async (roleId: string, settings: RoleTaskScopeSettings) => {
+    try {
+      const { error } = await supabase
+        .from('role_task_scope_overrides')
+        .upsert({
+          rol_aile_definition_id: roleId,
+          scope_mode: settings.scopeMode,
+          allow_assigned_cross_direction: settings.allowAssignedCrossDirection,
+        }, { onConflict: 'rol_aile_definition_id' })
+
+      if (error) throw error
+
+      await fetchRoleTaskScopeOverrides()
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event(ROLE_PERMISSIONS_UPDATED_EVENT))
+      }
+      toast.success('Alcance de tareas actualizado')
+    } catch (error) {
+      console.error('Error saving role task scope:', error)
+      toast.error('Error al guardar alcance de tareas')
+      throw error
+    }
+  }, [fetchRoleTaskScopeOverrides])
+
+  const resetRoleTaskScope = useCallback(async (roleId: string) => {
+    try {
+      const { error } = await supabase
+        .from('role_task_scope_overrides')
+        .delete()
+        .eq('rol_aile_definition_id', roleId)
+
+      if (error) throw error
+
+      setTaskScopeOverrides((prev) => prev.filter((row) => row.rol_aile_definition_id !== roleId))
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event(ROLE_PERMISSIONS_UPDATED_EVENT))
+      }
+      toast.success('Alcance de tareas restablecido')
+    } catch (error) {
+      console.error('Error resetting role task scope:', error)
+      toast.error('Error al restablecer alcance de tareas')
       throw error
     }
   }, [])
@@ -191,6 +278,7 @@ export function useRoles() {
 
       setRoles((prev) => prev.filter((r) => r.id !== id))
       setPermissionOverrides((prev) => prev.filter((row) => row.rol_aile_definition_id !== id))
+      setTaskScopeOverrides((prev) => prev.filter((row) => row.rol_aile_definition_id !== id))
       toast.success('Rol eliminado exitosamente')
     } catch (error: unknown) {
       const safeError = error as { code?: string; message?: string } | null
@@ -235,6 +323,19 @@ export function useRoles() {
     return map
   }, [permissionOverrides, roles])
 
+  const roleTaskScopeOverridesByRoleId = useMemo<RoleTaskScopeOverridesById>(() => {
+    const map: RoleTaskScopeOverridesById = {}
+
+    for (const row of taskScopeOverrides) {
+      map[row.rol_aile_definition_id] = {
+        scopeMode: row.scope_mode,
+        allowAssignedCrossDirection: row.allow_assigned_cross_direction,
+      }
+    }
+
+    return map
+  }, [taskScopeOverrides])
+
   const getRoleMatrix = useCallback((roleId: string): RolePermissionMatrix => {
     const roleOverrides = permissionOverridesByRoleId[roleId]
     const matrix = buildEmptyPermissionMatrix(false)
@@ -248,9 +349,13 @@ export function useRoles() {
     return matrix
   }, [permissionOverridesByRoleId])
 
+  const getRoleTaskScope = useCallback((roleId: string): RoleTaskScopeSettings => {
+    return roleTaskScopeOverridesByRoleId[roleId] || DEFAULT_ROLE_TASK_SCOPE_SETTINGS
+  }, [roleTaskScopeOverridesByRoleId])
+
   const refreshAll = useCallback(async () => {
-    await Promise.all([fetchRoles(), fetchPermissionOverrides()])
-  }, [fetchPermissionOverrides, fetchRoles])
+    await Promise.all([fetchRoles(), fetchPermissionOverrides(), fetchRoleTaskScopeOverrides()])
+  }, [fetchPermissionOverrides, fetchRoleTaskScopeOverrides, fetchRoles])
 
   useEffect(() => {
     void refreshAll()
@@ -260,18 +365,25 @@ export function useRoles() {
   return {
     roles,
     permissionOverrides,
+    taskScopeOverrides,
     permissionOverridesByRoleId,
     permissionOverridesByRoleName,
+    roleTaskScopeOverridesByRoleId,
     loading,
     permissionsLoading,
+    taskScopeLoading,
     fetchRoles,
     fetchPermissionOverrides,
+    fetchRoleTaskScopeOverrides,
     refreshAll,
     addRole,
     updateRole,
     deleteRole,
     saveRolePermissions,
     resetRolePermissions,
+    saveRoleTaskScope,
+    resetRoleTaskScope,
     getRoleMatrix,
+    getRoleTaskScope,
   }
 }

@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState, useEffect } from "react"
-import { useRoles, type RolePermissionMatrix } from "@/hooks/useRoles"
+import { useRoles, type RolePermissionMatrix, type RoleTaskScopeSettings } from "@/hooks/useRoles"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -23,6 +23,13 @@ import {
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import {
   ACCION_LABELS,
   PERMISSION_ACTIONS,
@@ -69,12 +76,16 @@ export function RolesManager() {
     roles,
     loading,
     permissionsLoading,
+    taskScopeLoading,
     permissionOverridesByRoleId,
+    getRoleTaskScope,
     addRole,
     updateRole,
     deleteRole,
     saveRolePermissions,
     resetRolePermissions,
+    saveRoleTaskScope,
+    resetRoleTaskScope,
   } = useRoles()
 
   const [isAddOpen, setIsAddOpen] = useState(false)
@@ -83,6 +94,7 @@ export function RolesManager() {
   const [selectedRole, setSelectedRole] = useState<BasicRole | null>(null)
   const [newRoleName, setNewRoleName] = useState("")
   const [permissionMatrix, setPermissionMatrix] = useState<RolePermissionMatrix | null>(null)
+  const [taskScopeSettings, setTaskScopeSettings] = useState<RoleTaskScopeSettings | null>(null)
   const [isSavingPermissions, setIsSavingPermissions] = useState(false)
   const [isResettingPermissions, setIsResettingPermissions] = useState(false)
 
@@ -94,7 +106,8 @@ export function RolesManager() {
   useEffect(() => {
     if (!selectedRole || !isPermissionsOpen) return
     setPermissionMatrix(buildRolePermissionMatrix(selectedRole, permissionOverridesByRoleId))
-  }, [selectedRole, isPermissionsOpen, permissionOverridesByRoleId])
+    setTaskScopeSettings(getRoleTaskScope(selectedRole.id))
+  }, [selectedRole, isPermissionsOpen, permissionOverridesByRoleId, getRoleTaskScope])
 
   const handleAdd = async () => {
     if (!newRoleName.trim()) return
@@ -138,6 +151,7 @@ export function RolesManager() {
   const openPermissions = (role: BasicRole) => {
     setSelectedRole(role)
     setPermissionMatrix(buildRolePermissionMatrix(role, permissionOverridesByRoleId))
+    setTaskScopeSettings(getRoleTaskScope(role.id))
     setIsPermissionsOpen(true)
   }
 
@@ -157,11 +171,14 @@ export function RolesManager() {
   }
 
   const handleSavePermissions = async () => {
-    if (!selectedRole || !permissionMatrix) return
+    if (!selectedRole || !permissionMatrix || !taskScopeSettings) return
 
     setIsSavingPermissions(true)
     try {
-      await saveRolePermissions(selectedRole.id, permissionMatrix)
+      await Promise.all([
+        saveRolePermissions(selectedRole.id, permissionMatrix),
+        saveRoleTaskScope(selectedRole.id, taskScopeSettings),
+      ])
       setIsPermissionsOpen(false)
     } finally {
       setIsSavingPermissions(false)
@@ -174,8 +191,15 @@ export function RolesManager() {
 
     setIsResettingPermissions(true)
     try {
-      await resetRolePermissions(selectedRole.id)
+      await Promise.all([
+        resetRolePermissions(selectedRole.id),
+        resetRoleTaskScope(selectedRole.id),
+      ])
       setPermissionMatrix(buildRolePermissionMatrix(selectedRole, {}))
+      setTaskScopeSettings({
+        scopeMode: 'own_direction',
+        allowAssignedCrossDirection: true,
+      })
     } finally {
       setIsResettingPermissions(false)
     }
@@ -231,7 +255,7 @@ export function RolesManager() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {(loading || permissionsLoading) ? (
+            {(loading || permissionsLoading || taskScopeLoading) ? (
               <TableRow>
                 <TableCell colSpan={2} className="h-24 text-center">
                   <Loader2 className="h-6 w-6 animate-spin mx-auto" />
@@ -348,6 +372,62 @@ export function RolesManager() {
             </Table>
           </div>
 
+          {!selectedRoleIsGlobal && taskScopeSettings ? (
+            <div className="rounded-md border p-4 space-y-3">
+              <div>
+                <h4 className="text-sm font-medium">Alcance de gestión en Tareas</h4>
+                <p className="text-xs text-muted-foreground">
+                  Define si el rol gestiona solo su dirección o todas las direcciones.
+                </p>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label>Alcance</Label>
+                  <Select
+                    value={taskScopeSettings.scopeMode}
+                    onValueChange={(value) => {
+                      setTaskScopeSettings((current) => (
+                        current
+                          ? { ...current, scopeMode: value as RoleTaskScopeSettings['scopeMode'] }
+                          : current
+                      ))
+                    }}
+                    disabled={isSavingPermissions || isResettingPermissions}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="own_direction">Solo su dirección</SelectItem>
+                      <SelectItem value="all_directions">Todas las direcciones</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label>Edición por asignación cruzada</Label>
+                  <div className="flex items-center gap-2 rounded-md border px-3 py-2">
+                    <Switch
+                      checked={taskScopeSettings.allowAssignedCrossDirection}
+                      onCheckedChange={(checked) => {
+                        setTaskScopeSettings((current) => (
+                          current
+                            ? { ...current, allowAssignedCrossDirection: checked }
+                            : current
+                        ))
+                      }}
+                      disabled={isSavingPermissions || isResettingPermissions}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Permitir editar tareas/subtareas asignadas fuera de su dirección.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
           <DialogFooter className="flex-col sm:flex-row gap-2">
             <Button
               variant="outline"
@@ -361,7 +441,7 @@ export function RolesManager() {
               Cerrar
             </Button>
             <Button
-              disabled={selectedRoleIsGlobal || isSavingPermissions || !permissionMatrix}
+              disabled={selectedRoleIsGlobal || isSavingPermissions || !permissionMatrix || !taskScopeSettings}
               onClick={handleSavePermissions}
             >
               {isSavingPermissions ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}

@@ -28,6 +28,13 @@ interface RoleSimulationState {
   rolAile: string | null
 }
 
+type TaskScopeMode = 'own_direction' | 'all_directions'
+
+type TaskScopeSettings = {
+  scopeMode: TaskScopeMode
+  allowAssignedCrossDirection: boolean
+}
+
 interface AuthContextType {
   user: AuthUser | null
   rol: Rol
@@ -41,6 +48,8 @@ interface AuthContextType {
   signOut: () => Promise<void>
   hasPermission: (recurso: Recurso, accion: Accion) => boolean
   hasActualPermission: (recurso: Recurso, accion: Accion) => boolean
+  taskScopeSettings: TaskScopeSettings
+  getTaskScopeSettings: (rolAileValue?: string | null) => TaskScopeSettings
   refreshUser: () => Promise<void>
   canRoleSimulation: boolean
   isRoleSimulationActive: boolean
@@ -70,6 +79,13 @@ interface RolePermissionOverrideRow {
   rol_aile_definition?: { nombre?: string } | null
 }
 
+interface RoleTaskScopeOverrideRow {
+  rol_aile_definition_id: string
+  scope_mode: TaskScopeMode
+  allow_assigned_cross_direction: boolean
+  rol_aile_definition?: { nombre?: string } | null
+}
+
 interface SocioAuthRow {
   id: string
   usuario_id: string | null
@@ -85,6 +101,11 @@ interface SocioAuthRow {
 
 interface RequirePermissionOptions {
   useActualPermission?: boolean
+}
+
+const DEFAULT_TASK_SCOPE_SETTINGS: TaskScopeSettings = {
+  scopeMode: 'own_direction',
+  allowAssignedCrossDirection: true,
 }
 
 const SOCIO_AUTH_SELECT =
@@ -186,6 +207,25 @@ function buildPermissionOverridesMap(rows: RolePermissionOverrideRow[]): RolePer
   return overridesMap
 }
 
+function buildTaskScopeOverridesMap(rows: RoleTaskScopeOverrideRow[]): Record<string, TaskScopeSettings> {
+  const scopeMap: Record<string, TaskScopeSettings> = {}
+
+  for (const row of rows) {
+    const roleName = row.rol_aile_definition?.nombre
+    if (!roleName) continue
+
+    const normalizedRoleName = normalizeInstitutionalRole(roleName)
+    if (!normalizedRoleName) continue
+
+    scopeMap[normalizedRoleName] = {
+      scopeMode: row.scope_mode,
+      allowAssignedCrossDirection: row.allow_assigned_cross_direction,
+    }
+  }
+
+  return scopeMap
+}
+
 async function fetchRolePermissionOverrides(): Promise<RolePermissionOverridesMap> {
   const { data, error } = await supabase
     .from('role_permission_overrides')
@@ -200,6 +240,21 @@ async function fetchRolePermissionOverrides(): Promise<RolePermissionOverridesMa
   if (error) throw error
 
   return buildPermissionOverridesMap((data || []) as RolePermissionOverrideRow[])
+}
+
+async function fetchRoleTaskScopeOverrides(): Promise<Record<string, TaskScopeSettings>> {
+  const { data, error } = await supabase
+    .from('role_task_scope_overrides')
+    .select(`
+      rol_aile_definition_id,
+      scope_mode,
+      allow_assigned_cross_direction,
+      rol_aile_definition:rol_aile_definitions(nombre)
+    `)
+
+  if (error) throw error
+
+  return buildTaskScopeOverridesMap((data || []) as RoleTaskScopeOverrideRow[])
 }
 
 async function fetchSocioByUserId(userId: string): Promise<SocioAuthRow | null> {
@@ -295,6 +350,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
   const [sessionStatus, setSessionStatus] = useState<'unknown' | 'authenticated' | 'unauthenticated'>('unknown')
   const [permissionOverrides, setPermissionOverrides] = useState<RolePermissionOverridesMap>({})
+  const [taskScopeOverrides, setTaskScopeOverrides] = useState<Record<string, TaskScopeSettings>>({})
   const [roleSimulation, setRoleSimulationState] = useState<RoleSimulationState | null>(null)
 
   const latestUserRef = useRef<AuthUser | null>(null)
@@ -311,6 +367,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const rol = (canRoleSimulation && roleSimulation) ? roleSimulation.rol : actualRol
   const rolAile = (canRoleSimulation && roleSimulation) ? (roleSimulation.rolAile ?? actualRolAile) : actualRolAile
+  const getTaskScopeSettings = useCallback((rolAileValue?: string | null): TaskScopeSettings => {
+    const normalized = normalizeInstitutionalRole(rolAileValue)
+    if (!normalized) return DEFAULT_TASK_SCOPE_SETTINGS
+    return taskScopeOverrides[normalized] || DEFAULT_TASK_SCOPE_SETTINGS
+  }, [taskScopeOverrides])
+  const taskScopeSettings = useMemo(() => getTaskScopeSettings(rolAile), [getTaskScopeSettings, rolAile])
 
   useEffect(() => {
     latestUserRef.current = user
@@ -326,11 +388,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const handlePermissionOverridesUpdated = () => {
       void (async () => {
         try {
-          const dynamicPermissionOverrides = await runWithRecovery(
-            () => fetchRolePermissionOverrides(),
-            { label: 'auth role permission overrides refresh', timeoutMs: 12_000, retries: 2, retryDelayMs: 400 }
-          )
+          const [dynamicPermissionOverrides, dynamicTaskScopeOverrides] = await Promise.all([
+            runWithRecovery(
+              () => fetchRolePermissionOverrides(),
+              { label: 'auth role permission overrides refresh', timeoutMs: 12_000, retries: 2, retryDelayMs: 400 }
+            ),
+            runWithRecovery(
+              () => fetchRoleTaskScopeOverrides(),
+              { label: 'auth role task scope overrides refresh', timeoutMs: 12_000, retries: 2, retryDelayMs: 400 }
+            ),
+          ])
           setPermissionOverrides(dynamicPermissionOverrides)
+          setTaskScopeOverrides(dynamicTaskScopeOverrides)
         } catch (error) {
           console.error('Error refreshing role permission overrides:', error)
         }
@@ -374,10 +443,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSessionStatus('unauthenticated')
         setUser(null)
         setPermissionOverrides({})
+        setTaskScopeOverrides({})
         return
       }
 
-      const [authorizedUser, dynamicPermissionOverrides] = await Promise.all([
+      const [authorizedUser, dynamicPermissionOverrides, dynamicTaskScopeOverrides] = await Promise.all([
         runWithRecovery(
           () => fetchAuthorizedSocioData(session.user as SessionUserLike),
           { label: 'auth authorized profile', timeoutMs: 12_000, retries: 2, retryDelayMs: 400 }
@@ -386,6 +456,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           () => fetchRolePermissionOverrides(),
           { label: 'auth role permission overrides', timeoutMs: 12_000, retries: 2, retryDelayMs: 400 }
         ),
+        runWithRecovery(
+          () => fetchRoleTaskScopeOverrides(),
+          { label: 'auth role task scope overrides', timeoutMs: 12_000, retries: 2, retryDelayMs: 400 }
+        ),
       ])
 
       if (!authorizedUser) {
@@ -393,12 +467,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSessionStatus('unauthenticated')
         setUser(null)
         setPermissionOverrides({})
+        setTaskScopeOverrides({})
         return
       }
 
       setSessionStatus('authenticated')
       setUser(authorizedUser)
       setPermissionOverrides(dynamicPermissionOverrides)
+      setTaskScopeOverrides(dynamicTaskScopeOverrides)
     } catch (error) {
       if (error instanceof RequestTimeoutError || (error as { name?: string } | null)?.name === 'RequestTimeoutError') {
         if (latestUserRef.current) {
@@ -407,6 +483,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setSessionStatus('unauthenticated')
           setUser(null)
           setPermissionOverrides({})
+          setTaskScopeOverrides({})
         }
 
         if (process.env.NODE_ENV !== 'production') {
@@ -440,6 +517,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setSessionStatus('unauthenticated')
           setUser(null)
           setPermissionOverrides({})
+          setTaskScopeOverrides({})
           clearRoleSimulation()
           return
         }
@@ -498,6 +576,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSessionStatus('unauthenticated')
     setUser(null)
     setPermissionOverrides({})
+    setTaskScopeOverrides({})
     clearRoleSimulation()
     router.push('/login')
   }
@@ -527,6 +606,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     signOut,
     hasPermission,
     hasActualPermission,
+    taskScopeSettings,
+    getTaskScopeSettings,
     refreshUser,
     canRoleSimulation,
     isRoleSimulationActive: Boolean(canRoleSimulation && roleSimulation),

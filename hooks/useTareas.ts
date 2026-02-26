@@ -283,6 +283,17 @@ function directionFromCodeOrName(raw: string): DireccionBase {
   return 'CEA'
 }
 
+function directionFromRoleName(raw?: string | null): DireccionBase | null {
+  const normalized = normalizeText(raw)
+  if (!normalized) return null
+
+  if (normalized.includes('comunic')) return 'Comunicación'
+  if (normalized.includes('finanza')) return 'Finanzas'
+  if (normalized.includes('rrhh') || normalized.includes('recurso')) return 'Recursos Humanos'
+
+  return null
+}
+
 function directionCode(direction: DireccionBase) {
   switch (direction) {
     case 'CEA':
@@ -356,7 +367,7 @@ function roleIsCoreManager(rol: Rol) {
 }
 
 export function useTareas() {
-  const { user, rol } = useAuth()
+  const { user, rol, rolAile, hasPermission, taskScopeSettings } = useAuth()
 
   const [loading, setLoading] = useState(true)
   const [mutatingAction, setMutatingAction] = useState<string | null>(null)
@@ -473,6 +484,22 @@ export function useTareas() {
   }, [direcciones])
 
   const directorDirectionIdSet = useMemo(() => new Set(directorDirectionIds), [directorDirectionIds])
+  const inferredRoleDirection = useMemo(() => directionFromRoleName(rolAile), [rolAile])
+
+  const roleTaskPermissions = useMemo(
+    () => ({
+      canCreate: hasPermission('tareas', 'crear'),
+      canEdit: hasPermission('tareas', 'editar'),
+      canDelete: hasPermission('tareas', 'eliminar'),
+      canApprove: hasPermission('tareas', 'aprobar'),
+    }),
+    [hasPermission]
+  )
+
+  const hasTaskManagementPermission = useMemo(
+    () => roleTaskPermissions.canCreate || roleTaskPermissions.canEdit || roleTaskPermissions.canDelete,
+    [roleTaskPermissions.canCreate, roleTaskPermissions.canDelete, roleTaskPermissions.canEdit]
+  )
 
   const isAssignedToCurrentUser = useCallback((item: {
     asignado_usuario_id?: string | null
@@ -484,53 +511,115 @@ export function useTareas() {
     return false
   }, [user])
 
-  const canCreateProjectInDirection = useCallback((direction: DireccionBase) => {
+  const hasDirectionScope = useCallback((direction: DireccionBase) => {
     if (!user) return false
     if (roleIsCoreManager(rol)) return true
+    if (taskScopeSettings.scopeMode === 'all_directions') return hasTaskManagementPermission
+    if (inferredRoleDirection === direction) return true
 
     const directionCodeValue = directionCode(direction)
     const candidate = direcciones.find((item) => item.codigo === directionCodeValue)
     if (!candidate) return false
 
     return directorDirectionIdSet.has(candidate.id)
-  }, [direcciones, directorDirectionIdSet, rol, user])
+  }, [direcciones, directorDirectionIdSet, hasTaskManagementPermission, inferredRoleDirection, rol, taskScopeSettings.scopeMode, user])
+
+  const canCreateProjectInDirection = useCallback((direction: DireccionBase) => {
+    if (!user || !roleTaskPermissions.canCreate) return false
+    return hasDirectionScope(direction)
+  }, [hasDirectionScope, roleTaskPermissions.canCreate, user])
 
   const canCreateInstitutionalProject = useCallback(() => {
-    if (!user) return false
+    if (!user || !roleTaskPermissions.canCreate) return false
     return roleIsCoreManager(rol)
-  }, [rol, user])
+  }, [rol, roleTaskPermissions.canCreate, user])
 
   const canManageProject = useCallback((project: ProyectoTarea) => {
     if (!user) return false
+    if (!hasTaskManagementPermission) return false
     if (roleIsCoreManager(rol)) return true
+    if (taskScopeSettings.scopeMode === 'all_directions') return true
     if (project.responsable_socio_id && project.responsable_socio_id === user.socio_id) return true
+    if (project.direccion && hasDirectionScope(project.direccion)) return true
     if (project.direccion_id && directorDirectionIdSet.has(project.direccion_id)) return true
+
+    if (project.direccion_id) {
+      const linkedDirection = directionById.get(project.direccion_id)
+      if (linkedDirection && hasDirectionScope(directionFromCodeOrName(linkedDirection.nombre || linkedDirection.codigo))) {
+        return true
+      }
+    }
+
     return false
-  }, [directorDirectionIdSet, rol, user])
+  }, [directorDirectionIdSet, directionById, hasDirectionScope, hasTaskManagementPermission, rol, taskScopeSettings.scopeMode, user])
 
   const canManageTask = useCallback((task: TareaProyecto) => {
     if (!user) return false
+    if (!hasTaskManagementPermission) return false
+    if (taskScopeSettings.scopeMode === 'all_directions') return true
     const project = projectById.get(task.proyecto_id)
     if (project && canManageProject(project)) return true
+    if (task.direccion_responsable && hasDirectionScope(task.direccion_responsable)) return true
     if (task.direccion_responsable_id && directorDirectionIdSet.has(task.direccion_responsable_id)) return true
+
+    if (task.direccion_responsable_id) {
+      const linkedDirection = directionById.get(task.direccion_responsable_id)
+      if (linkedDirection && hasDirectionScope(directionFromCodeOrName(linkedDirection.nombre || linkedDirection.codigo))) {
+        return true
+      }
+    }
+
     return false
-  }, [canManageProject, directorDirectionIdSet, projectById, user])
+  }, [canManageProject, directorDirectionIdSet, directionById, hasDirectionScope, hasTaskManagementPermission, projectById, taskScopeSettings.scopeMode, user])
+
+  const isTaskInScopedDirection = useCallback((task: TareaProyecto) => {
+    if (taskScopeSettings.scopeMode === 'all_directions') return true
+
+    if (task.direccion_responsable) {
+      return hasDirectionScope(task.direccion_responsable)
+    }
+
+    if (task.direccion_responsable_id) {
+      const linkedDirection = directionById.get(task.direccion_responsable_id)
+      if (linkedDirection) {
+        return hasDirectionScope(directionFromCodeOrName(linkedDirection.nombre || linkedDirection.codigo))
+      }
+    }
+
+    const project = projectById.get(task.proyecto_id)
+    if (project?.direccion) return hasDirectionScope(project.direccion)
+
+    if (project?.direccion_id) {
+      const linkedDirection = directionById.get(project.direccion_id)
+      if (linkedDirection) {
+        return hasDirectionScope(directionFromCodeOrName(linkedDirection.nombre || linkedDirection.codigo))
+      }
+    }
+
+    return false
+  }, [directionById, hasDirectionScope, projectById, taskScopeSettings.scopeMode])
 
   const canEditTask = useCallback((task: TareaProyecto) => {
     if (canManageTask(task)) return true
-    return isAssignedToCurrentUser(task)
-  }, [canManageTask, isAssignedToCurrentUser])
+    if (!isAssignedToCurrentUser(task)) return false
+    if (taskScopeSettings.allowAssignedCrossDirection) return true
+    return isTaskInScopedDirection(task)
+  }, [canManageTask, isAssignedToCurrentUser, isTaskInScopedDirection, taskScopeSettings.allowAssignedCrossDirection])
 
   const canEditSubtask = useCallback((subtask: SubtareaProyecto) => {
     const parentTask = taskById.get(subtask.tarea_id)
     if (parentTask && canManageTask(parentTask)) return true
-    return isAssignedToCurrentUser(subtask)
-  }, [canManageTask, isAssignedToCurrentUser, taskById])
+    if (!isAssignedToCurrentUser(subtask)) return false
+    if (taskScopeSettings.allowAssignedCrossDirection) return true
+    if (!parentTask) return false
+    return isTaskInScopedDirection(parentTask)
+  }, [canManageTask, isAssignedToCurrentUser, isTaskInScopedDirection, taskById, taskScopeSettings.allowAssignedCrossDirection])
 
   const canSendTaskToCd = useCallback((task: TareaProyecto) => {
+    if (!(roleTaskPermissions.canEdit || roleTaskPermissions.canApprove)) return false
     if (!canManageTask(task)) return false
     return task.estado_backend !== 'cerrada'
-  }, [canManageTask])
+  }, [canManageTask, roleTaskPermissions.canApprove, roleTaskPermissions.canEdit])
 
   const canResolveTaskCd = useCallback((taskId: string) => {
     if (!user) return false
@@ -560,23 +649,28 @@ export function useTareas() {
 
   const projectAccess = useCallback((project: ProyectoTarea): AccesoProyectoTarea => {
     const canManage = canManageProject(project)
-    if (canManage) {
+    const canCreateScopedInInstitutionalProject = !canManage
+      && project.tipo === 'institucional'
+      && roleTaskPermissions.canCreate
+      && (roleIsCoreManager(rol) || directorDirectionIdSet.size > 0 || Boolean(inferredRoleDirection))
+
+    if (canManage || canCreateScopedInInstitutionalProject) {
       return {
-        canManage: true,
-        canCreate: true,
-        canAssign: true,
-        canHandoff: true,
-        canDelete: true,
-        canSubmitCd: true,
-        canApproveCd: true,
-        canEditAssigned: true,
+        canManage,
+        canCreate: roleTaskPermissions.canCreate,
+        canAssign: canManage && roleTaskPermissions.canEdit,
+        canHandoff: canManage && roleTaskPermissions.canEdit,
+        canDelete: canManage && roleTaskPermissions.canDelete,
+        canSubmitCd: canManage && (roleTaskPermissions.canEdit || roleTaskPermissions.canApprove),
+        canApproveCd: canManage && roleTaskPermissions.canApprove,
+        canEditAssigned: canManage && roleTaskPermissions.canEdit,
         readOnly: false,
       }
     }
 
-    const assignedTasks = (tasksByProjectId.get(project.id) || []).some((task) => isAssignedToCurrentUser(task))
+    const assignedTasks = (tasksByProjectId.get(project.id) || []).some((task) => canEditTask(task))
     const assignedSubtasks = (tasksByProjectId.get(project.id) || []).some((task) =>
-      (subtasksByTaskId.get(task.id) || []).some((subtask) => isAssignedToCurrentUser(subtask))
+      (subtasksByTaskId.get(task.id) || []).some((subtask) => canEditSubtask(subtask))
     )
     const canEditAssigned = assignedTasks || assignedSubtasks
 
@@ -591,7 +685,7 @@ export function useTareas() {
       canEditAssigned,
       readOnly: !canEditAssigned,
     }
-  }, [canManageProject, isAssignedToCurrentUser, subtasksByTaskId, tasksByProjectId])
+  }, [canEditSubtask, canEditTask, canManageProject, directorDirectionIdSet, inferredRoleDirection, roleTaskPermissions.canApprove, roleTaskPermissions.canCreate, roleTaskPermissions.canDelete, roleTaskPermissions.canEdit, rol, subtasksByTaskId, tasksByProjectId])
 
   const throwPermissionError = useCallback((message: string): never => {
     toast.error(message)
@@ -1170,7 +1264,24 @@ export function useTareas() {
   const createTask = useCallback(async (payload: CrearTareaPayload) => {
     const project = projectById.get(payload.proyecto_id)
     if (!project) throw new Error('Proyecto no encontrado')
-    if (!canManageProject(project)) {
+
+    if (!roleTaskPermissions.canCreate) {
+      throwPermissionError('No tienes permisos de rol para crear tareas.')
+    }
+
+    const targetDirection = payload.direccion_responsable
+      || (project.tipo === 'interno_direccion' ? (project.direccion || null) : null)
+
+    if (project.tipo === 'institucional') {
+      if (!targetDirection) {
+        throwPermissionError('Debes indicar la dirección responsable de la tarea.')
+      }
+
+      const scopedDirection = targetDirection as DireccionBase
+      if (!canManageProject(project) && !hasDirectionScope(scopedDirection)) {
+        throwPermissionError('No tienes permisos para crear tareas en esa dirección.')
+      }
+    } else if (!canManageProject(project)) {
       throwPermissionError('No tienes permisos para crear tareas en este proyecto.')
     }
 
@@ -1199,7 +1310,7 @@ export function useTareas() {
       ]),
       'Tarea creada'
     )
-  }, [callRpcWithFallback, canManageProject, projectById, runMutation, throwPermissionError, usuarioById])
+  }, [callRpcWithFallback, canManageProject, hasDirectionScope, projectById, roleTaskPermissions.canCreate, runMutation, throwPermissionError, usuarioById])
 
   const createSubtask = useCallback(async (payload: CrearSubtareaPayload) => {
     const parentTask = taskById.get(payload.tarea_id)
@@ -1208,8 +1319,12 @@ export function useTareas() {
     const project = projectById.get(parentTask.proyecto_id)
     if (!project) throw new Error('Proyecto no encontrado')
 
-    if (!canManageProject(project)) {
-      throwPermissionError('No tienes permisos para crear subtareas en este proyecto.')
+    if (!roleTaskPermissions.canCreate) {
+      throwPermissionError('No tienes permisos de rol para crear subtareas.')
+    }
+
+    if (!canManageTask(parentTask)) {
+      throwPermissionError('No tienes permisos para crear subtareas en esta tarea.')
     }
 
     const assigneeSocioId = payload.asignado_socio_id
@@ -1232,7 +1347,7 @@ export function useTareas() {
       ]),
       'Subtarea creada'
     )
-  }, [callRpcWithFallback, canManageProject, projectById, runMutation, taskById, throwPermissionError, usuarioById])
+  }, [callRpcWithFallback, canManageTask, projectById, roleTaskPermissions.canCreate, runMutation, taskById, throwPermissionError, usuarioById])
 
   const assignTask = useCallback(async (
     taskId: string,
