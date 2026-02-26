@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import type {
   CategoriaFinanciera,
@@ -47,11 +47,17 @@ export function useFinanzas(filters: FinanceFilters = {}) {
   const [availableYears, setAvailableYears] = useState<number[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const hasLoadedDataRef = useRef(false)
 
   // ── Fetch all base data ────────────────────────────────
-  const fetchData = useCallback(async () => {
-    setLoading(true)
-    setError(null)
+  const fetchData = useCallback(async (options?: { silent?: boolean }) => {
+    const silent = options?.silent ?? false
+    const showBlockingLoader = !silent || !hasLoadedDataRef.current
+
+    if (showBlockingLoader) {
+      setLoading(true)
+      setError(null)
+    }
 
     try {
       const buildMovementsQuery = () => {
@@ -112,17 +118,23 @@ export function useFinanzas(filters: FinanceFilters = {}) {
       setCategorias(referenceData.categorias)
       setEventos(referenceData.eventos)
       setAvailableYears(referenceData.availableYears)
+      hasLoadedDataRef.current = true
+      setError(null)
     } catch (error) {
       console.error('Error fetching finance data:', error)
-      setError('No se pudieron cargar los datos financieros.')
-      toast.error('No se pudo cargar el dashboard financiero. Intenta nuevamente.')
+      if (showBlockingLoader) {
+        setError('No se pudieron cargar los datos financieros.')
+        toast.error('No se pudo cargar el dashboard financiero. Intenta nuevamente.')
+      }
     } finally {
-      setLoading(false)
+      if (showBlockingLoader) {
+        setLoading(false)
+      }
     }
   }, [filters.anio, filters.categoriaId, filters.eventoId])
 
-  useEffect(() => { fetchData() }, [fetchData])
-  useResumeRefresh(() => { void fetchData() }, { throttleMs: 5_000 })
+  useEffect(() => { void fetchData() }, [fetchData])
+  useResumeRefresh(() => { void fetchData({ silent: true }) }, { throttleMs: 5_000 })
 
   // ── Computed: Finance Summary (KPIs) ───────────────────
   const summary: FinanceSummary = useMemo(() => {
@@ -312,9 +324,13 @@ export function useFinanzas(filters: FinanceFilters = {}) {
     }])
 
     toast.success('Movimiento registrado correctamente')
-    fetchData()
+    await fetchData()
     return data[0]
   }
+
+  const refreshData = useCallback(() => {
+    return fetchData()
+  }, [fetchData])
 
   return {
     // Data
@@ -334,6 +350,6 @@ export function useFinanzas(filters: FinanceFilters = {}) {
     getTransactionDetail,
     getEventComparison,
     registrarMovimiento,
-    refreshData: fetchData,
+    refreshData,
   }
 }

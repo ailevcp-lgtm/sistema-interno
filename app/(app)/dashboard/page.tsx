@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import {
   Users,
@@ -97,14 +97,21 @@ export default function DashboardPage() {
   const [loadingResoluciones, setLoadingResoluciones] = useState(true)
   const [agendaItems, setAgendaItems] = useState<AgendaItem[]>([])
   const [loadingAgenda, setLoadingAgenda] = useState(true)
+  const hasLoadedStatsRef = useRef(false)
+  const hasLoadedResolucionesRef = useRef(false)
 
   const nombre = user?.nombre || 'Usuario'
   const apellido = user?.apellido || ''
   const rolColors = ROL_COLORS[rol as Rol]
 
-  const fetchDashboardData = useCallback(async () => {
+  const fetchDashboardData = useCallback(async (options?: { silent?: boolean }) => {
+    const silent = options?.silent ?? false
+    const showBlockingLoader = !silent || !hasLoadedStatsRef.current
+
     try {
-      setLoading(true)
+      if (showBlockingLoader) {
+        setLoading(true)
+      }
 
       const [sociosResult, cuotasResult, resolucionesResult] = await Promise.all([
         runWithRecovery(() => supabase
@@ -152,16 +159,24 @@ export default function DashboardPage() {
         saldoActual,
         resolucionesVigentes,
       })
+      hasLoadedStatsRef.current = true
     } catch (error) {
       console.error('Error fetching dashboard data:', error)
     } finally {
-      setLoading(false)
+      if (showBlockingLoader) {
+        setLoading(false)
+      }
     }
   }, [hasPermission])
 
-  const fetchResolucionesRecientes = useCallback(async () => {
+  const fetchResolucionesRecientes = useCallback(async (options?: { silent?: boolean }) => {
+    const silent = options?.silent ?? false
+    const showBlockingLoader = !silent || !hasLoadedResolucionesRef.current
+
     try {
-      setLoadingResoluciones(true)
+      if (showBlockingLoader) {
+        setLoadingResoluciones(true)
+      }
       const { data } = await runWithRecovery(() => supabase
         .from('resoluciones')
         .select('*')
@@ -171,10 +186,13 @@ export default function DashboardPage() {
         })
 
       setResoluciones(data || [])
+      hasLoadedResolucionesRef.current = true
     } catch (error) {
       console.error('Error fetching resoluciones:', error)
     } finally {
-      setLoadingResoluciones(false)
+      if (showBlockingLoader) {
+        setLoadingResoluciones(false)
+      }
     }
   }, [])
 
@@ -248,8 +266,8 @@ export default function DashboardPage() {
   }, [fetchDashboardData, fetchResolucionesRecientes, fetchAgendaItems])
 
   useResumeRefresh(() => {
-    void fetchDashboardData()
-    void fetchResolucionesRecientes()
+    void fetchDashboardData({ silent: true })
+    void fetchResolucionesRecientes({ silent: true })
     void fetchAgendaItems()
   }, { throttleMs: 5_000 })
 

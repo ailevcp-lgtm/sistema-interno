@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from './useAuth'
 import { toast } from 'sonner'
@@ -21,9 +21,15 @@ export function useTesoreria() {
     const [categorias, setCategorias] = useState<CategoriaFinanciera[]>([])
     const [movimientos, setMovimientos] = useState<MovimientoExtended[]>([])
     const [loading, setLoading] = useState(true)
+    const hasLoadedDataRef = useRef(false)
 
-    const fetchData = useCallback(async () => {
-        setLoading(true)
+    const fetchData = useCallback(async (options?: { silent?: boolean }) => {
+        const silent = options?.silent ?? false
+        const showBlockingLoader = !silent || !hasLoadedDataRef.current
+
+        if (showBlockingLoader) {
+            setLoading(true)
+        }
         try {
             const [referenceData, movsResult, recentResult] = await Promise.all([
                 runWithRecovery(
@@ -108,19 +114,24 @@ export function useTesoreria() {
 
             setCuentas(cuentasConSaldo)
             setMovimientos(recentMovimientos)
+            hasLoadedDataRef.current = true
 
         } catch (error) {
             console.error('Error fetching treasury data:', error)
-            toast.error('Error al cargar datos de tesorería')
+            if (showBlockingLoader) {
+                toast.error('Error al cargar datos de tesorería')
+            }
         } finally {
-            setLoading(false)
+            if (showBlockingLoader) {
+                setLoading(false)
+            }
         }
     }, [])
 
     useEffect(() => {
         void fetchData()
     }, [fetchData])
-    useResumeRefresh(() => { void fetchData() }, { throttleMs: 5_000 })
+    useResumeRefresh(() => { void fetchData({ silent: true }) }, { throttleMs: 5_000 })
 
     const registrarArqueo = async (cuentaId: string, saldoReal: number, observaciones: string) => {
         if (!user) return
@@ -145,7 +156,7 @@ export function useTesoreria() {
             if (error) throw error
 
             toast.success('Arqueo registrado correctamente')
-            fetchData()
+            await fetchData()
             return true
         } catch (error) {
             console.error('Error registering arqueo:', error)
@@ -154,12 +165,16 @@ export function useTesoreria() {
         }
     }
 
+    const refreshData = useCallback(() => {
+        return fetchData()
+    }, [fetchData])
+
     return {
         cuentas,
         categorias,
         movimientos,
         loading,
-        refreshData: fetchData,
+        refreshData,
         registrarArqueo
     }
 }

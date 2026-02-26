@@ -493,8 +493,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       console.error('Error validating auth session:', error)
-      setSessionStatus('unknown')
-      setUser((current) => current ?? null)
+      if (latestUserRef.current) {
+        setSessionStatus('authenticated')
+        setUser(latestUserRef.current)
+        return
+      }
+
+      setSessionStatus('unauthenticated')
+      setUser(null)
+      setPermissionOverrides({})
+      setTaskScopeOverrides({})
     }
   }, [])
 
@@ -522,7 +530,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return
         }
 
-        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
+        if (event === 'TOKEN_REFRESHED') {
+          if (latestUserRef.current) {
+            setSessionStatus('authenticated')
+          }
+          return
+        }
+
+        if (event === 'SIGNED_IN' || event === 'USER_UPDATED') {
           await syncUserFromSession()
         }
       } catch (error) {

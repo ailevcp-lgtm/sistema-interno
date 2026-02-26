@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import type { Socio, Cuota, EstadoSocio, EstadoCuota, Cuenta, PromocionCuota, MovimientoExtended, CuotaAplicacion } from '@/lib/types'
 import { getCurrentPeriodo } from '@/lib/utils'
@@ -22,6 +22,7 @@ interface SociosFilters {
 export function useSocios(enabled: boolean = true) {
   const [socios, setSocios] = useState<Socio[]>([])
   const [loading, setLoading] = useState(true)
+  const sociosRef = useRef<Socio[]>([])
   const [filters, setFilters] = useState<SociosFilters>({
     search: '',
     estado: 'todos',
@@ -33,15 +34,25 @@ export function useSocios(enabled: boolean = true) {
 
   const pageSize = 15
 
-  const fetchSocios = useCallback(async () => {
+  useEffect(() => {
+    sociosRef.current = socios
+  }, [socios])
+
+  const fetchSocios = useCallback(async (options?: { silent?: boolean }) => {
     if (!enabled) {
       setSocios([])
       setLoading(false)
       return
     }
 
+    const silent = options?.silent ?? false
+    const hasCachedData = sociosRef.current.length > 0
+    const showBlockingLoader = !silent || !hasCachedData
+
     try {
-      setLoading(true)
+      if (showBlockingLoader) {
+        setLoading(true)
+      }
       const { data, error } = await runWithRecovery(() => supabase
         .from('socios')
         .select(`
@@ -63,9 +74,13 @@ export function useSocios(enabled: boolean = true) {
       })) as Socio[])
     } catch (error) {
       console.error('Error fetching socios:', error)
-      toast.error('Error al cargar socios')
+      if (showBlockingLoader) {
+        toast.error('Error al cargar socios')
+      }
     } finally {
-      setLoading(false)
+      if (showBlockingLoader) {
+        setLoading(false)
+      }
     }
   }, [enabled])
 
@@ -74,7 +89,7 @@ export function useSocios(enabled: boolean = true) {
   }, [fetchSocios])
   useResumeRefresh(() => {
     if (!enabled) return
-    void fetchSocios()
+    void fetchSocios({ silent: true })
   }, { throttleMs: 5_000 })
 
   const filtered = useMemo(() => {
@@ -268,6 +283,7 @@ export interface PagoSocio extends MovimientoExtended {
 export function useCuotas(socioId?: string) {
   const [cuotas, setCuotas] = useState<(Cuota & { socio?: Socio })[]>([])
   const [loading, setLoading] = useState(true)
+  const cuotasRef = useRef<(Cuota & { socio?: Socio })[]>([])
   const [cuentas, setCuentas] = useState<Cuenta[]>([])
   const [promociones, setPromociones] = useState<PromocionCuota[]>([])
   const [cuotasCategoriaId, setCuotasCategoriaId] = useState<string | null>(null)
@@ -283,6 +299,10 @@ export function useCuotas(socioId?: string) {
   })
 
   const pageSize = 20
+
+  useEffect(() => {
+    cuotasRef.current = cuotas
+  }, [cuotas])
 
   // Fetch cuotas_categoria_id from configuracion
   const fetchConfig = useCallback(async () => {
@@ -332,9 +352,15 @@ export function useCuotas(socioId?: string) {
     }
   }, [])
 
-  const fetchCuotas = useCallback(async () => {
+  const fetchCuotas = useCallback(async (options?: { silent?: boolean }) => {
+    const silent = options?.silent ?? false
+    const hasCachedData = cuotasRef.current.length > 0
+    const showBlockingLoader = !silent || !hasCachedData
+
     try {
-      setLoading(true)
+      if (showBlockingLoader) {
+        setLoading(true)
+      }
       let query = supabase
         .from('cuotas')
         .select('*, socio:socios(id, nombre, apellido, dni, email)')
@@ -358,9 +384,13 @@ export function useCuotas(socioId?: string) {
       })) as (Cuota & { socio?: Socio })[])
     } catch (error) {
       console.error('Error fetching cuotas:', error)
-      toast.error('Error al cargar cuotas')
+      if (showBlockingLoader) {
+        toast.error('Error al cargar cuotas')
+      }
     } finally {
-      setLoading(false)
+      if (showBlockingLoader) {
+        setLoading(false)
+      }
     }
   }, [socioId])
 
@@ -371,7 +401,7 @@ export function useCuotas(socioId?: string) {
     void fetchPromociones()
   }, [fetchCuotas, fetchConfig, fetchCuentas, fetchPromociones])
   useResumeRefresh(() => {
-    void fetchCuotas()
+    void fetchCuotas({ silent: true })
     void fetchConfig()
     void fetchCuentas()
     void fetchPromociones()
