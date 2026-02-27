@@ -64,7 +64,7 @@ export default function MiPerfilPage() {
                                 <h2 className="text-xl font-semibold">
                                     {user.nombre} {user.apellido}
                                 </h2>
-                                <p className="text-muted-foreground break-all">{user.email}</p>
+                                <p className="text-muted-foreground">{user.email}</p>
                                 <div className="flex items-center justify-center gap-2 mt-2">
                                     <span className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 border-transparent bg-primary/10 text-primary">
                                         {userData?.rol_aile || 'Socio'}

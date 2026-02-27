@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
 import { useReintegrosDirector } from '@/hooks/useReintegrosDirector'
@@ -41,8 +41,6 @@ import {
   CheckCircle2,
   Clock3,
   CircleSlash,
-  Loader2,
-  Upload,
   ShieldAlert,
   Wallet,
   Plus,
@@ -50,7 +48,6 @@ import {
   MessageSquareWarning,
   XCircle,
 } from 'lucide-react'
-import { toast } from 'sonner'
 
 interface CategoriaEgresoOption {
   id: string
@@ -69,9 +66,6 @@ const ARS_FORMATTER = new Intl.NumberFormat('es-AR', {
   style: 'currency',
   currency: 'ARS',
 })
-const FACTURA_UPLOAD_BUCKET = 'documentos'
-const FACTURA_UPLOAD_FOLDER = 'reintegros/facturas'
-const FACTURA_MAX_SIZE_BYTES = 10 * 1024 * 1024
 
 function estadoBadge(estado: ReintegroEstado) {
   switch (estado) {
@@ -122,13 +116,10 @@ export default function ReintegrosPage() {
   const [formMonto, setFormMonto] = useState('')
   const [formDescripcion, setFormDescripcion] = useState('')
   const [formFacturaUrl, setFormFacturaUrl] = useState('')
-  const [formFacturaFileName, setFormFacturaFileName] = useState('')
   const [formFacturaNumero, setFormFacturaNumero] = useState('')
   const [formFacturaEmisor, setFormFacturaEmisor] = useState('')
   const [creating, setCreating] = useState(false)
-  const [uploadingFactura, setUploadingFactura] = useState(false)
   const [runningAction, setRunningAction] = useState<string | null>(null)
-  const facturaInputRef = useRef<HTMLInputElement>(null)
 
   const [dialogMode, setDialogMode] = useState<WorkflowDialogMode>(null)
   const [dialogSolicitud, setDialogSolicitud] = useState<SolicitudReintegro | null>(null)
@@ -226,79 +217,13 @@ export default function ReintegrosPage() {
     setFormMonto('')
     setFormDescripcion('')
     setFormFacturaUrl('')
-    setFormFacturaFileName('')
     setFormFacturaNumero('')
     setFormFacturaEmisor('')
-    if (facturaInputRef.current) {
-      facturaInputRef.current.value = ''
-    }
-  }
-
-  const clearFacturaUpload = useCallback(() => {
-    setFormFacturaUrl('')
-    setFormFacturaFileName('')
-    if (facturaInputRef.current) {
-      facturaInputRef.current.value = ''
-    }
-  }, [])
-
-  const handleFacturaUpload = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    if (!file) return
-
-    if (!file.type.startsWith('image/')) {
-      toast.error('Solo se permiten imágenes para la factura')
-      event.target.value = ''
-      return
-    }
-
-    if (file.size > FACTURA_MAX_SIZE_BYTES) {
-      toast.error('La imagen supera el máximo de 10MB')
-      event.target.value = ''
-      return
-    }
-
-    setUploadingFactura(true)
-    try {
-      const extension = file.name.split('.').pop()?.toLowerCase() || 'jpg'
-      const baseName = file.name
-        .replace(/\.[^/.]+$/, '')
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-+|-+$/g, '')
-      const randomSuffix = Math.random().toString(36).slice(2, 10)
-      const fileName = `${Date.now()}-${randomSuffix}-${baseName || 'factura'}.${extension}`
-      const filePath = `${FACTURA_UPLOAD_FOLDER}/${fileName}`
-
-      const { error: uploadError } = await supabase.storage
-        .from(FACTURA_UPLOAD_BUCKET)
-        .upload(filePath, file, {
-          cacheControl: '3600',
-          upsert: false,
-          contentType: file.type,
-        })
-
-      if (uploadError) throw uploadError
-
-      const { data } = supabase.storage
-        .from(FACTURA_UPLOAD_BUCKET)
-        .getPublicUrl(filePath)
-
-      setFormFacturaUrl(data.publicUrl)
-      setFormFacturaFileName(file.name)
-      toast.success('Imagen de factura subida')
-    } catch (error) {
-      console.error('Error uploading factura image:', error)
-      clearFacturaUpload()
-      toast.error('No se pudo subir la imagen de factura')
-    } finally {
-      setUploadingFactura(false)
-    }
   }
 
   const handleCrearSolicitud = async () => {
     if (!canCreateSolicitud) return
-    if (!formFechaGasto || !formCategoriaId || !formMonto || !formDescripcion || !formFacturaUrl || uploadingFactura) return
+    if (!formFechaGasto || !formCategoriaId || !formMonto || !formDescripcion || !formFacturaUrl) return
 
     setCreating(true)
     try {
@@ -450,10 +375,10 @@ export default function ReintegrosPage() {
       </div>
 
       <Tabs defaultValue={canCreateSolicitud ? 'mis' : 'bandeja'} className="space-y-4">
-        <TabsList className="w-full justify-start overflow-x-auto">
-          <TabsTrigger value="mis" className="shrink-0">Mis reintegros</TabsTrigger>
-          <TabsTrigger value="bandeja" className="shrink-0">Bandeja de aprobación</TabsTrigger>
-          <TabsTrigger value="pagos" className="shrink-0">Pendientes de pago</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value="mis">Mis reintegros</TabsTrigger>
+          <TabsTrigger value="bandeja">Bandeja de aprobación</TabsTrigger>
+          <TabsTrigger value="pagos">Pendientes de pago</TabsTrigger>
         </TabsList>
 
         <TabsContent value="mis" className="space-y-4">
@@ -474,7 +399,7 @@ export default function ReintegrosPage() {
                   className="w-full sm:w-80"
                 />
                 {canCreateSolicitud && (
-                  <Button onClick={() => setShowNuevaSolicitud(true)} className="w-full sm:w-auto gap-2">
+                  <Button onClick={() => setShowNuevaSolicitud(true)} className="gap-2">
                     <Plus className="w-4 h-4" />
                     Nueva solicitud
                   </Button>
@@ -798,42 +723,13 @@ export default function ReintegrosPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="factura_file">Factura (imagen)</Label>
+              <Label htmlFor="factura_url">URL de factura</Label>
               <Input
-                id="factura_file"
-                type="file"
-                accept="image/*"
-                onChange={(event) => void handleFacturaUpload(event)}
-                disabled={uploadingFactura || creating}
-                ref={facturaInputRef}
+                id="factura_url"
+                value={formFacturaUrl}
+                onChange={(event) => setFormFacturaUrl(event.target.value)}
+                placeholder="https://..."
               />
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                {uploadingFactura ? (
-                  <>
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    Subiendo imagen...
-                  </>
-                ) : formFacturaFileName ? (
-                  <>
-                    <Upload className="h-3.5 w-3.5" />
-                    {formFacturaFileName}
-                  </>
-                ) : (
-                  'Formatos permitidos: JPG, PNG, WEBP. Máximo 10MB.'
-                )}
-              </div>
-              {formFacturaFileName && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 px-2 text-xs"
-                  onClick={clearFacturaUpload}
-                  disabled={uploadingFactura || creating}
-                >
-                  Quitar imagen
-                </Button>
-              )}
             </div>
 
             <div className="space-y-2">
@@ -872,10 +768,7 @@ export default function ReintegrosPage() {
             <Button variant="outline" onClick={() => setShowNuevaSolicitud(false)} disabled={creating}>
               Cancelar
             </Button>
-            <Button
-              onClick={() => void handleCrearSolicitud()}
-              disabled={creating || uploadingFactura || !formFechaGasto || !formCategoriaId || !formMonto || !formDescripcion || !formFacturaUrl}
-            >
+            <Button onClick={() => void handleCrearSolicitud()} disabled={creating}>
               {creating ? 'Guardando...' : 'Guardar borrador'}
             </Button>
           </DialogFooter>

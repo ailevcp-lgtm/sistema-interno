@@ -300,7 +300,7 @@ export function MovimientosChronology() {
                           </div>
                           <p
                             className={cn(
-                              "font-bold text-sm md:text-base break-words text-right",
+                              "font-bold text-sm md:text-base whitespace-nowrap",
                               movement.tipo === "ingreso" ? "text-emerald-600" : "text-rose-600"
                             )}
                           >

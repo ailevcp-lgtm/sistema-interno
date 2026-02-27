@@ -1224,7 +1224,6 @@ export default function CalendarioPage() {
                       ))}
                     </div>
                   )}
-
                   {planificacionesDelDia.length > 0 && (
                     <div className="space-y-2">
                       <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Planificación de comisión</p>
@@ -1241,7 +1240,6 @@ export default function CalendarioPage() {
                       ))}
                     </div>
                   )}
-
                   {tareasVencenDelDia.length > 0 && (
                     <div className="space-y-2">
                       <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Vencimientos de tareas</p>

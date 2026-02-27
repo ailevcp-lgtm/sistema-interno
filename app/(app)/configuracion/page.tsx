@@ -68,31 +68,31 @@ export default function ConfiguracionPage() {
       </div>
 
       <Tabs defaultValue="roles" className="space-y-4">
-        <TabsList className="w-full justify-start bg-muted border border-border overflow-x-auto">
+        <TabsList className="bg-muted border border-border">
           <TabsTrigger
             value="roles"
-            className="shrink-0 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+            className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
           >
             <Users className="w-4 h-4 mr-2" />
             Roles
           </TabsTrigger>
           <TabsTrigger
             value="cuotas"
-            className="shrink-0 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+            className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
           >
             <Wallet className="w-4 h-4 mr-2" />
             Cuotas
           </TabsTrigger>
           <TabsTrigger
             value="categorias"
-            className="shrink-0 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+            className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
           >
             <Tags className="w-4 h-4 mr-2" />
             Categorías
           </TabsTrigger>
           <TabsTrigger
             value="logs"
-            className="shrink-0 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+            className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
           >
             <Activity className="w-4 h-4 mr-2" />
             Logs
@@ -277,8 +277,8 @@ function RolesTab() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="flex flex-col sm:flex-row sm:items-center gap-4 mb-4">
-          <div className="relative flex-1">
+        <div className="flex items-center gap-4 mb-4">
+          <div className="relative flex-1 max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
               placeholder="Buscar usuario..."
@@ -294,62 +294,60 @@ function RolesTab() {
             <Loader2 className="w-6 h-6 animate-spin text-primary" />
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <Table className="min-w-[760px]">
-              <TableHeader>
-                <TableRow className="border-border hover:bg-transparent">
-                  <TableHead className="text-muted-foreground">Usuario</TableHead>
-                  <TableHead className="text-muted-foreground">Email</TableHead>
-                  <TableHead className="text-muted-foreground">Rol Institucional</TableHead>
-                  <TableHead className="text-muted-foreground">Permisos</TableHead>
-                  <TableHead className="text-muted-foreground">Acciones</TableHead>
+          <Table>
+            <TableHeader>
+              <TableRow className="border-border hover:bg-transparent">
+                <TableHead className="text-muted-foreground">Usuario</TableHead>
+                <TableHead className="text-muted-foreground">Email</TableHead>
+                <TableHead className="text-muted-foreground">Rol Institucional</TableHead>
+                <TableHead className="text-muted-foreground">Permisos</TableHead>
+                <TableHead className="text-muted-foreground">Acciones</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredUsers.map((usuario) => (
+                <TableRow
+                  key={usuario.id}
+                  className="border-border hover:bg-muted/50"
+                >
+                  <TableCell className="text-foreground">
+                    {usuario.nombre} {usuario.apellido}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">{usuario.email}</TableCell>
+                  <TableCell>
+                    <span className="text-sm font-medium">
+                      {/* @ts-ignore */}
+                      {usuario.rol_aile_nombre}
+                    </span>
+                  </TableCell>
+                  <TableCell>
+                    <Badge className={cn(
+                      ROL_COLORS[usuario.rol].bg,
+                      ROL_COLORS[usuario.rol].text,
+                      'border-0'
+                    )}>
+                      {ROL_LABELS[usuario.rol]}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setSelectedUser(usuario)
+                        setNewRole(usuario.rol)
+                        // @ts-ignore
+                        setNewRoleAileId(usuario.rol_aile_id || "")
+                        setIsDialogOpen(true)
+                      }}
+                    >
+                      Editar
+                    </Button>
+                  </TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredUsers.map((usuario) => (
-                  <TableRow
-                    key={usuario.id}
-                    className="border-border hover:bg-muted/50"
-                  >
-                    <TableCell className="text-foreground">
-                      {usuario.nombre} {usuario.apellido}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">{usuario.email}</TableCell>
-                    <TableCell>
-                      <span className="text-sm font-medium">
-                        {/* @ts-ignore */}
-                        {usuario.rol_aile_nombre}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <Badge className={cn(
-                        ROL_COLORS[usuario.rol].bg,
-                        ROL_COLORS[usuario.rol].text,
-                        'border-0'
-                      )}>
-                        {ROL_LABELS[usuario.rol]}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          setSelectedUser(usuario)
-                          setNewRole(usuario.rol)
-                          // @ts-ignore
-                          setNewRoleAileId(usuario.rol_aile_id || "")
-                          setIsDialogOpen(true)
-                        }}
-                      >
-                        Editar
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+              ))}
+            </TableBody>
+          </Table>
         )}
 
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
@@ -389,7 +387,7 @@ function RolesTab() {
 
               <div className="space-y-3">
                 <Label className="text-foreground font-medium">Nivel de Permisos (Sistema)</Label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div className="grid grid-cols-2 gap-2">
                   {(['socio', 'comision_directiva', 'revisor_cuentas', 'admin'] as Rol[]).map((r) => (
                     <button
                       key={r}
@@ -675,7 +673,7 @@ function CategoriasTab() {
             placeholder="Nueva categoría..."
             value={newCategoria}
             onChange={(e) => setNewCategoria(e.target.value)}
-            className="w-full sm:max-w-xs"
+            className="max-w-xs"
           />
           <select
             value={newTipo}
@@ -800,44 +798,42 @@ function LogsTab() {
             <Loader2 className="w-6 h-6 animate-spin text-primary" />
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <Table className="min-w-[780px]">
-              <TableHeader>
-                <TableRow className="border-border hover:bg-transparent">
-                  <TableHead className="text-muted-foreground">Fecha/Hora</TableHead>
-                  <TableHead className="text-muted-foreground">Usuario</TableHead>
-                  <TableHead className="text-muted-foreground">Acción</TableHead>
-                  <TableHead className="text-muted-foreground">Detalle</TableHead>
+          <Table>
+            <TableHeader>
+              <TableRow className="border-border hover:bg-transparent">
+                <TableHead className="text-muted-foreground">Fecha/Hora</TableHead>
+                <TableHead className="text-muted-foreground">Usuario</TableHead>
+                <TableHead className="text-muted-foreground">Acción</TableHead>
+                <TableHead className="text-muted-foreground">Detalle</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {logs.map((log) => (
+                <TableRow
+                  key={log.id}
+                  className="border-border hover:bg-muted/50"
+                >
+                  <TableCell className="text-muted-foreground text-sm">
+                    {formatDateTime(log.created_at)}
+                  </TableCell>
+                  <TableCell className="text-foreground text-sm">
+                    Usuario #{log.usuario_id}
+                  </TableCell>
+                  <TableCell>
+                    <Badge className="bg-primary/20 text-primary border-0">
+                      {log.accion}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground text-sm">
+                    {log.detalle}
+                  </TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {logs.map((log) => (
-                  <TableRow
-                    key={log.id}
-                    className="border-border hover:bg-muted/50"
-                  >
-                    <TableCell className="text-muted-foreground text-sm">
-                      {formatDateTime(log.created_at)}
-                    </TableCell>
-                    <TableCell className="text-foreground text-sm">
-                      Usuario #{log.usuario_id}
-                    </TableCell>
-                    <TableCell>
-                      <Badge className="bg-primary/20 text-primary border-0">
-                        {log.accion}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground text-sm">
-                      {log.detalle}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+              ))}
+            </TableBody>
+          </Table>
         )}
 
-        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center justify-between mt-4">
           <p className="text-sm text-muted-foreground">
             Mostrando {logs.length} registros
           </p>
