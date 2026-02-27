@@ -9,13 +9,50 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
 
+function resolveSafeNextPath(nextPath?: string | null): string {
+  if (!nextPath || !nextPath.startsWith('/')) return '/dashboard'
+  if (nextPath.startsWith('/auth/callback')) return '/dashboard'
+  return nextPath
+}
+
+function getRedirectToFromLocation(): string {
+  if (typeof window === 'undefined') return '/dashboard'
+  const params = new URLSearchParams(window.location.search)
+  return resolveSafeNextPath(params.get('redirectTo'))
+}
+
+function GoogleIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4">
+      <path
+        d="M21.35 11.1H12v2.95h5.35a4.53 4.53 0 0 1-1.97 2.97v2.47h3.18c1.86-1.71 2.94-4.22 2.94-7.24 0-.64-.06-1.16-.15-1.65Z"
+        fill="#4285F4"
+      />
+      <path
+        d="M12 21c2.67 0 4.92-.88 6.56-2.4l-3.18-2.47c-.88.59-2 .94-3.38.94-2.6 0-4.8-1.76-5.59-4.13H3.13v2.55A9.9 9.9 0 0 0 12 21Z"
+        fill="#34A853"
+      />
+      <path
+        d="M6.41 12.94A5.96 5.96 0 0 1 6.1 11.1c0-.64.11-1.27.31-1.84V6.71H3.13A9.9 9.9 0 0 0 2.1 11.1c0 1.58.38 3.07 1.03 4.39l3.28-2.55Z"
+        fill="#FBBC05"
+      />
+      <path
+        d="M12 5.13c1.45 0 2.74.5 3.76 1.47l2.82-2.82C16.9 2.19 14.67 1.2 12 1.2a9.9 9.9 0 0 0-8.87 5.51l3.28 2.55C7.2 6.89 9.4 5.13 12 5.13Z"
+        fill="#EA4335"
+      />
+    </svg>
+  )
+}
+
 export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
-  const { signIn } = useAuth()
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false)
+  const { signIn, signInWithGoogle } = useAuth()
   const router = useRouter()
+  const isAnyLoading = isLoading || isGoogleLoading
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -34,8 +71,9 @@ export default function LoginPage() {
         toast.error('Credenciales inválidas')
         console.error('Login error:', error)
       } else {
+        const redirectTo = getRedirectToFromLocation()
         toast.success('¡Bienvenido!')
-        router.push('/dashboard')
+        router.push(redirectTo)
         router.refresh()
       }
     } catch (error) {
@@ -43,6 +81,25 @@ export default function LoginPage() {
       console.error('Login error:', error)
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  const handleGoogleSignIn = async () => {
+    setIsGoogleLoading(true)
+
+    try {
+      const redirectTo = getRedirectToFromLocation()
+      const { error } = await signInWithGoogle(redirectTo)
+
+      if (error) {
+        toast.error('No se pudo iniciar sesión con Google')
+        console.error('Google login error:', error)
+      }
+    } catch (error) {
+      toast.error('Error al iniciar sesión con Google')
+      console.error('Google login error:', error)
+    } finally {
+      setIsGoogleLoading(false)
     }
   }
 
@@ -113,7 +170,7 @@ export default function LoginPage() {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     className="pl-10 h-11"
-                    disabled={isLoading}
+                    disabled={isAnyLoading}
                   />
                 </div>
               </div>
@@ -129,7 +186,7 @@ export default function LoginPage() {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     className="pl-10 pr-10 h-11"
-                    disabled={isLoading}
+                    disabled={isAnyLoading}
                   />
                   <button
                     type="button"
@@ -148,7 +205,7 @@ export default function LoginPage() {
               <Button
                 type="submit"
                 className="w-full h-11 bg-gradient-to-r from-[#6314a7] to-[#e50051] hover:from-[#7d2bc0] hover:to-[#ef336f] text-white font-semibold"
-                disabled={isLoading}
+                disabled={isAnyLoading}
               >
                 {isLoading ? (
                   <>
@@ -157,6 +214,35 @@ export default function LoginPage() {
                   </>
                 ) : (
                   'Iniciar sesión'
+                )}
+              </Button>
+
+              <div className="relative py-1">
+                <div className="absolute inset-0 flex items-center">
+                  <span className="w-full border-t border-border" />
+                </div>
+                <div className="relative flex justify-center text-xs">
+                  <span className="bg-card px-2 text-muted-foreground">o continuar con</span>
+                </div>
+              </div>
+
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full h-11 font-semibold"
+                disabled={isAnyLoading}
+                onClick={handleGoogleSignIn}
+              >
+                {isGoogleLoading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Redirigiendo a Google...
+                  </>
+                ) : (
+                  <>
+                    <GoogleIcon />
+                    Continuar con Google
+                  </>
                 )}
               </Button>
             </form>
