@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
+import { AUTH_SESSION_RESUMED_EVENT } from '@/lib/constants'
 
 interface ResumeRefreshOptions {
   enabled?: boolean
@@ -25,9 +26,9 @@ export function useResumeRefresh(
   useEffect(() => {
     if (!enabled) return
 
-    const runRefresh = () => {
+    const runRefresh = (force: boolean = false) => {
       const now = Date.now()
-      if (now - lastRunRef.current < throttleMs) return
+      if (!force && now - lastRunRef.current < throttleMs) return
 
       lastRunRef.current = now
       void refreshRef.current()
@@ -39,14 +40,28 @@ export function useResumeRefresh(
       }
     }
 
-    window.addEventListener('focus', runRefresh)
-    window.addEventListener('online', runRefresh)
+    const onAuthSessionResumed = () => {
+      runRefresh(true)
+    }
+
+    const onFocus = () => {
+      runRefresh()
+    }
+
+    const onOnline = () => {
+      runRefresh()
+    }
+
+    window.addEventListener('focus', onFocus)
+    window.addEventListener('online', onOnline)
     document.addEventListener('visibilitychange', onVisibilityChange)
+    window.addEventListener(AUTH_SESSION_RESUMED_EVENT, onAuthSessionResumed)
 
     return () => {
-      window.removeEventListener('focus', runRefresh)
-      window.removeEventListener('online', runRefresh)
+      window.removeEventListener('focus', onFocus)
+      window.removeEventListener('online', onOnline)
       document.removeEventListener('visibilitychange', onVisibilityChange)
+      window.removeEventListener(AUTH_SESSION_RESUMED_EVENT, onAuthSessionResumed)
     }
   }, [enabled, throttleMs])
 }

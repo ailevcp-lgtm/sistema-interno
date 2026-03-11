@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
@@ -18,20 +18,31 @@ interface ArqueoModalProps {
     registrarArqueo: (cuentaId: string, saldoReal: number, observaciones: string) => Promise<boolean | undefined>
 }
 
+type ArqueoModalBodyProps = Omit<ArqueoModalProps, "cuenta"> & {
+    cuenta: CuentaConSaldo
+}
+
 export function ArqueoModal({ cuenta, isOpen, onClose, onSuccess, registrarArqueo }: ArqueoModalProps) {
+    if (!cuenta) return null
+
+    const modalKey = `${cuenta.id}-${isOpen ? "open" : "closed"}`
+
+    return (
+        <ArqueoModalBody
+            key={modalKey}
+            cuenta={cuenta}
+            isOpen={isOpen}
+            onClose={onClose}
+            onSuccess={onSuccess}
+            registrarArqueo={registrarArqueo}
+        />
+    )
+}
+
+function ArqueoModalBody({ cuenta, isOpen, onClose, onSuccess, registrarArqueo }: ArqueoModalBodyProps) {
     const [saldoReal, setSaldoReal] = useState("")
     const [observaciones, setObservaciones] = useState("")
     const [loading, setLoading] = useState(false)
-
-    // Reset form when modal opens
-    useEffect(() => {
-        if (isOpen) {
-            setSaldoReal("")
-            setObservaciones("")
-        }
-    }, [isOpen])
-
-    if (!cuenta) return null
 
     const saldoSistema = cuenta.saldo
     const real = parseFloat(saldoReal) || 0

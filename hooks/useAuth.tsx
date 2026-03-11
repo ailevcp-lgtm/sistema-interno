@@ -7,6 +7,7 @@ import type { Rol, Recurso, Accion } from '@/lib/types'
 import {
   hasPermission as resolvePermission,
   ROLE_PERMISSIONS_UPDATED_EVENT,
+  AUTH_SESSION_RESUMED_EVENT,
   normalizeInstitutionalRole,
   type RolePermissionOverridesMap,
 } from '@/lib/constants'
@@ -103,10 +104,17 @@ interface RequirePermissionOptions {
   useActualPermission?: boolean
 }
 
+interface SyncUserFromSessionOptions {
+  refreshSession?: boolean
+  sessionUser?: SessionUserLike | null
+}
+
 const DEFAULT_TASK_SCOPE_SETTINGS: TaskScopeSettings = {
   scopeMode: 'own_direction',
   allowAssignedCrossDirection: true,
 }
+
+const SESSION_RESUME_THROTTLE_MS = 15_000
 
 const SOCIO_AUTH_SELECT =
   'id, usuario_id, nombre, apellido, email, estado, rol, avatar_url, rol_aile, rol_aile_definition:rol_aile_definitions(nombre)'
@@ -354,6 +362,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [roleSimulation, setRoleSimulationState] = useState<RoleSimulationState | null>(null)
 
   const latestUserRef = useRef<AuthUser | null>(null)
+  const syncInFlightRef = useRef<Promise<void> | null>(null)
+  const lastSessionResumeRef = useRef(0)
   const router = useRouter()
 
   const actualRol = user?.rol || 'socio'
@@ -432,79 +442,152 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     persistRoleSimulationToStorage(null)
   }, [])
 
-  const syncUserFromSession = useCallback(async () => {
-    try {
-      const { data: { session } } = await runWithRecovery(
-        () => supabase.auth.getSession(),
-        { label: 'auth session', timeoutMs: 12_000, retries: 2, retryDelayMs: 400 }
-      )
+  const syncUserFromSession = useCallback(async (options: SyncUserFromSessionOptions = {}) => {
+    if (syncInFlightRef.current) {
+      await syncInFlightRef.current
+      return
+    }
 
-      if (!session?.user) {
-        setSessionStatus('unauthenticated')
-        setUser(null)
-        setPermissionOverrides({})
-        setTaskScopeOverrides({})
-        return
-      }
+    const syncPromise = (async () => {
+      try {
+        let sessionUser = options.sessionUser ?? null
 
-      const [authorizedUser, dynamicPermissionOverrides, dynamicTaskScopeOverrides] = await Promise.all([
-        runWithRecovery(
-          () => fetchAuthorizedSocioData(session.user as SessionUserLike),
-          { label: 'auth authorized profile', timeoutMs: 12_000, retries: 2, retryDelayMs: 400 }
-        ),
-        runWithRecovery(
-          () => fetchRolePermissionOverrides(),
-          { label: 'auth role permission overrides', timeoutMs: 12_000, retries: 2, retryDelayMs: 400 }
-        ),
-        runWithRecovery(
-          () => fetchRoleTaskScopeOverrides(),
-          { label: 'auth role task scope overrides', timeoutMs: 12_000, retries: 2, retryDelayMs: 400 }
-        ),
-      ])
+        if (!sessionUser && options.refreshSession) {
+          try {
+            const { data: { session: refreshedSession }, error: refreshError } = await runWithRecovery(
+              () => supabase.auth.refreshSession(),
+              { label: 'auth refresh session', timeoutMs: 12_000, retries: 1 }
+            )
 
-      if (!authorizedUser) {
-        await supabase.auth.signOut()
-        setSessionStatus('unauthenticated')
-        setUser(null)
-        setPermissionOverrides({})
-        setTaskScopeOverrides({})
-        return
-      }
+            if (refreshError) {
+              throw refreshError
+            }
 
-      setSessionStatus('authenticated')
-      setUser(authorizedUser)
-      setPermissionOverrides(dynamicPermissionOverrides)
-      setTaskScopeOverrides(dynamicTaskScopeOverrides)
-    } catch (error) {
-      if (error instanceof RequestTimeoutError || (error as { name?: string } | null)?.name === 'RequestTimeoutError') {
-        if (latestUserRef.current) {
-          setSessionStatus('authenticated')
-        } else {
+            sessionUser = (refreshedSession?.user as SessionUserLike | undefined) ?? null
+          } catch (error) {
+            if (process.env.NODE_ENV !== 'production') {
+              console.warn('Auth session refresh on resume failed; falling back to cached session', error)
+            }
+          }
+        }
+
+        if (!sessionUser) {
+          const { data: { session } } = await runWithRecovery(
+            () => supabase.auth.getSession(),
+            { label: 'auth session', timeoutMs: 12_000, retries: 2, retryDelayMs: 400 }
+          )
+
+          sessionUser = (session?.user as SessionUserLike | undefined) ?? null
+        }
+
+        if (!sessionUser) {
           setSessionStatus('unauthenticated')
           setUser(null)
           setPermissionOverrides({})
           setTaskScopeOverrides({})
+          return
         }
 
-        if (process.env.NODE_ENV !== 'production') {
-          console.warn('Auth session request timed out; falling back to last known auth state')
-        }
-        return
-      }
+        const [authorizedUser, dynamicPermissionOverrides, dynamicTaskScopeOverrides] = await Promise.all([
+          runWithRecovery(
+            () => fetchAuthorizedSocioData(sessionUser as SessionUserLike),
+            { label: 'auth authorized profile', timeoutMs: 12_000, retries: 2, retryDelayMs: 400 }
+          ),
+          runWithRecovery(
+            () => fetchRolePermissionOverrides(),
+            { label: 'auth role permission overrides', timeoutMs: 12_000, retries: 2, retryDelayMs: 400 }
+          ),
+          runWithRecovery(
+            () => fetchRoleTaskScopeOverrides(),
+            { label: 'auth role task scope overrides', timeoutMs: 12_000, retries: 2, retryDelayMs: 400 }
+          ),
+        ])
 
-      console.error('Error validating auth session:', error)
-      if (latestUserRef.current) {
+        if (!authorizedUser) {
+          await supabase.auth.signOut()
+          setSessionStatus('unauthenticated')
+          setUser(null)
+          setPermissionOverrides({})
+          setTaskScopeOverrides({})
+          return
+        }
+
         setSessionStatus('authenticated')
-        setUser(latestUserRef.current)
+        setUser(authorizedUser)
+        setPermissionOverrides(dynamicPermissionOverrides)
+        setTaskScopeOverrides(dynamicTaskScopeOverrides)
+      } catch (error) {
+        if (error instanceof RequestTimeoutError || (error as { name?: string } | null)?.name === 'RequestTimeoutError') {
+          if (latestUserRef.current) {
+            setSessionStatus('authenticated')
+          } else {
+            setSessionStatus('unauthenticated')
+            setUser(null)
+            setPermissionOverrides({})
+            setTaskScopeOverrides({})
+          }
+
+          if (process.env.NODE_ENV !== 'production') {
+            console.warn('Auth session request timed out; falling back to last known auth state')
+          }
+          return
+        }
+
+        console.error('Error validating auth session:', error)
+        if (latestUserRef.current) {
+          setSessionStatus('authenticated')
+          setUser(latestUserRef.current)
+          return
+        }
+
+        setSessionStatus('unauthenticated')
+        setUser(null)
+        setPermissionOverrides({})
+        setTaskScopeOverrides({})
+      }
+    })()
+
+    syncInFlightRef.current = syncPromise.finally(() => {
+      syncInFlightRef.current = null
+    })
+
+    await syncInFlightRef.current
+  }, [])
+
+  const dispatchSessionResumedEvent = useCallback(() => {
+    if (typeof window === 'undefined') return
+    window.dispatchEvent(new CustomEvent(AUTH_SESSION_RESUMED_EVENT))
+  }, [])
+
+  const handleAuthStateChange = useCallback(async (event: string, sessionUser: SessionUserLike | null) => {
+    try {
+      if (event === 'SIGNED_OUT') {
+        setSessionStatus('unauthenticated')
+        setUser(null)
+        setPermissionOverrides({})
+        setTaskScopeOverrides({})
+        clearRoleSimulation()
         return
       }
 
-      setSessionStatus('unauthenticated')
-      setUser(null)
-      setPermissionOverrides({})
-      setTaskScopeOverrides({})
+      if (event === 'TOKEN_REFRESHED') {
+        if (sessionUser && !latestUserRef.current) {
+          await syncUserFromSession({ sessionUser })
+        } else {
+          setSessionStatus(sessionUser ? 'authenticated' : 'unauthenticated')
+        }
+
+        dispatchSessionResumedEvent()
+        return
+      }
+
+      if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'USER_UPDATED') {
+        await syncUserFromSession({ sessionUser })
+      }
+    } catch (error) {
+      console.error('Error handling auth state change:', error)
     }
-  }, [])
+  }, [clearRoleSimulation, dispatchSessionResumedEvent, syncUserFromSession])
 
   useEffect(() => {
     let mounted = true
@@ -519,39 +602,54 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     void initAuth()
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event) => {
-      try {
-        if (event === 'SIGNED_OUT') {
-          setSessionStatus('unauthenticated')
-          setUser(null)
-          setPermissionOverrides({})
-          setTaskScopeOverrides({})
-          clearRoleSimulation()
-          return
-        }
-
-        if (event === 'TOKEN_REFRESHED') {
-          if (latestUserRef.current) {
-            setSessionStatus('authenticated')
-          }
-          return
-        }
-
-        if (event === 'SIGNED_IN' || event === 'USER_UPDATED') {
-          await syncUserFromSession()
-        }
-      } catch (error) {
-        console.error('Error handling auth state change:', error)
-      } finally {
-        if (mounted) setLoading((prev) => (prev ? false : prev))
-      }
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      window.setTimeout(() => {
+        void handleAuthStateChange(
+          event,
+          (session?.user as SessionUserLike | undefined) ?? null
+        ).finally(() => {
+          if (mounted) setLoading((prev) => (prev ? false : prev))
+        })
+      }, 0)
     })
 
     return () => {
       mounted = false
       subscription.unsubscribe()
     }
-  }, [clearRoleSimulation, syncUserFromSession])
+  }, [handleAuthStateChange, syncUserFromSession])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const recoverSessionOnResume = () => {
+      const now = Date.now()
+      if (now - lastSessionResumeRef.current < SESSION_RESUME_THROTTLE_MS) return
+
+      lastSessionResumeRef.current = now
+
+      void syncUserFromSession({ refreshSession: true })
+        .finally(() => {
+          dispatchSessionResumedEvent()
+        })
+    }
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        recoverSessionOnResume()
+      }
+    }
+
+    window.addEventListener('focus', recoverSessionOnResume)
+    window.addEventListener('online', recoverSessionOnResume)
+    document.addEventListener('visibilitychange', onVisibilityChange)
+
+    return () => {
+      window.removeEventListener('focus', recoverSessionOnResume)
+      window.removeEventListener('online', recoverSessionOnResume)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
+  }, [dispatchSessionResumedEvent, syncUserFromSession])
 
   const signIn = async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password })

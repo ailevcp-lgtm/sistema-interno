@@ -79,7 +79,22 @@ export default function SociosPage() {
 
   const handleNewSocio = async (data: Partial<Socio>) => {
     try {
-      await createSocio(data as any)
+      if (!data.nombre || !data.apellido || !data.dni || !data.email || !data.fecha_ingreso) {
+        return
+      }
+
+      await createSocio({
+        nombre: data.nombre,
+        apellido: data.apellido,
+        dni: data.dni,
+        email: data.email,
+        telefono: data.telefono || '',
+        fecha_ingreso: data.fecha_ingreso,
+        estado: data.estado || 'activo',
+        avatar_url: data.avatar_url,
+        rol_aile: data.rol_aile,
+        rol_aile_id: data.rol_aile_id,
+      })
       setShowNewModal(false)
     } catch {
       // Error handled in hook

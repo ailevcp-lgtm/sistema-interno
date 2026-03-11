@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useMemo } from "react"
 import { useAuth } from "@/hooks/useAuth"
 import { useSocios, useCuotas } from "@/hooks/useSocios"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -9,29 +9,19 @@ import { Button } from "@/components/ui/button"
 import { Loader2, AlertCircle, CheckCircle2, Wallet, CalendarClock, History } from "lucide-react"
 import { formatDate, formatPeriodo, formatARS } from "@/lib/utils"
 import { ESTADO_CUOTA_INLINE } from "@/lib/constants"
+import type { Socio } from "@/lib/types"
 
 export default function MiCuentaPage() {
     const { user } = useAuth()
-    const { socios } = useSocios()
-    const [loading, setLoading] = useState(true)
-    const [userData, setUserData] = useState<any>(null)
+    const { socios, loading: loadingSocios } = useSocios()
 
-    // Find the socio ID
-    const socio = socios.find(s => s.email === user?.email || s.usuario_id === user?.id)
+    const userData = useMemo<Socio | null>(() => (
+        socios.find((s) => s.email === user?.email || s.usuario_id === user?.id) || null
+    ), [socios, user?.email, user?.id])
 
-    // Use the hook with the socio ID (if found)
-    const { cuotas, loading: loadingCuotas } = useCuotas(socio?.id)
+    const { cuotas, loading: loadingCuotas } = useCuotas(userData?.id)
 
-    useEffect(() => {
-        if (user && socios.length > 0) {
-            setUserData(socio || null)
-            setLoading(false)
-        } else if (user) {
-            setLoading(false)
-        }
-    }, [user, socios, socio])
-
-    if (loading || (socio && loadingCuotas)) {
+    if ((user && loadingSocios) || (userData && loadingCuotas)) {
         return (
             <div className="flex items-center justify-center h-96">
                 <Loader2 className="w-8 h-8 animate-spin text-primary" />

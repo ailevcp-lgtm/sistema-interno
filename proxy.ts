@@ -11,6 +11,7 @@ interface SocioAuthGateRow {
 
 const SOCIO_GATE_SELECT = 'id, usuario_id, email, estado'
 const PROXY_AUTH_TIMEOUT_MS = 8_000
+type MiddlewareSupabaseClient = ReturnType<typeof createSupabaseMiddlewareClient>['supabase']
 
 class ProxyTimeoutError extends Error {
   constructor(message: string) {
@@ -62,7 +63,10 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: str
   })
 }
 
-async function fetchSocioByUserId(supabase: any, userId: string): Promise<SocioAuthGateRow | null> {
+async function fetchSocioByUserId(
+  supabase: MiddlewareSupabaseClient,
+  userId: string
+): Promise<SocioAuthGateRow | null> {
   const { data, error } = await supabase
     .from('socios')
     .select(SOCIO_GATE_SELECT)
@@ -74,7 +78,10 @@ async function fetchSocioByUserId(supabase: any, userId: string): Promise<SocioA
   return (data as SocioAuthGateRow | null) || null
 }
 
-async function fetchSocioByEmail(supabase: any, email: string): Promise<SocioAuthGateRow | null> {
+async function fetchSocioByEmail(
+  supabase: MiddlewareSupabaseClient,
+  email: string
+): Promise<SocioAuthGateRow | null> {
   const normalizedEmail = email.trim().toLowerCase()
   if (!normalizedEmail) return null
 
@@ -103,7 +110,11 @@ async function fetchSocioByEmail(supabase: any, email: string): Promise<SocioAut
   return exactMatches[0] || null
 }
 
-async function linkSocioToUserId(supabase: any, socioId: string, userId: string): Promise<SocioAuthGateRow | null> {
+async function linkSocioToUserId(
+  supabase: MiddlewareSupabaseClient,
+  socioId: string,
+  userId: string
+): Promise<SocioAuthGateRow | null> {
   const { error: updateError } = await supabase
     .from('socios')
     .update({ usuario_id: userId })
@@ -116,7 +127,7 @@ async function linkSocioToUserId(supabase: any, socioId: string, userId: string)
 }
 
 async function ensureAuthorizedSocio(
-  supabase: any,
+  supabase: MiddlewareSupabaseClient,
   user: { id: string; email?: string | null }
 ): Promise<boolean> {
   const existingSocio = await fetchSocioByUserId(supabase, user.id)

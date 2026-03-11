@@ -15,7 +15,6 @@ import {
 } from "@/components/ui/select"
 import { Loader2, Save, FileDown, Eye, PenLine } from "lucide-react"
 import { toast } from "sonner"
-// @ts-ignore
 import html2pdf from "html2pdf.js"
 import { supabase } from "@/lib/supabase"
 import type { Resolucion, TipoResolucion, EstadoResolucion } from "@/lib/types"

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
   ArrowRightLeft,
   CalendarClock,
@@ -260,26 +260,45 @@ export function TareasTaskCard({
   const [resolveApprove, setResolveApprove] = useState(true)
   const [resolveComment, setResolveComment] = useState('')
 
-  useEffect(() => {
+  const openEditDialog = () => {
     setEditTitle(task.titulo)
     setEditDescription(task.descripcion || '')
     setEditStatus(task.estado)
     setEditDueDate(task.fecha_limite || '')
     setEditDirectionResponsible(task.direccion_responsable || projectDirection || '')
     setSelectedAssignee(task.asignado_usuario_id || '')
-  }, [
-    task.titulo,
-    task.descripcion,
-    task.estado,
-    task.fecha_limite,
-    task.direccion_responsable,
-    task.asignado_usuario_id,
-    projectDirection,
-  ])
+    setOpenEdit(true)
+  }
 
-  useEffect(() => {
-    setIsExpanded(false)
-  }, [task.id])
+  const openAssignDialog = () => {
+    setSelectedAssignee(task.asignado_usuario_id || '')
+    setOpenAssign(true)
+  }
+
+  const openHandoffDialog = () => {
+    setHandoffAssignee('')
+    setHandoffNote('')
+    setOpenHandoff(true)
+  }
+
+  const openNewSubtaskDialog = () => {
+    setNewSubtaskTitle('')
+    setNewSubtaskDescription('')
+    setNewSubtaskStatus('pendiente')
+    setNewSubtaskAssignee('')
+    setOpenNewSubtask(true)
+  }
+
+  const openSendToCdDialog = () => {
+    setSendCdComment('')
+    setOpenSendToCd(true)
+  }
+
+  const openResolveCdDialog = (approve: boolean) => {
+    setResolveApprove(approve)
+    setResolveComment('')
+    setOpenResolveCd(true)
+  }
 
   const userById = useMemo(() => {
     const map = new Map<string, UsuarioAsignableTarea>()
@@ -611,7 +630,7 @@ export function TareasTaskCard({
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="w-52">
                           {(canManageTask || canEditTask) && (
-                            <DropdownMenuItem onClick={() => setOpenEdit(true)}>
+                            <DropdownMenuItem onClick={openEditDialog}>
                               <Pencil className="mr-2 h-4 w-4" />
                               Editar tarea
                             </DropdownMenuItem>
@@ -619,20 +638,20 @@ export function TareasTaskCard({
 
                           {canManageTask && (
                             <>
-                              <DropdownMenuItem onClick={() => setOpenAssign(true)}>
+                              <DropdownMenuItem onClick={openAssignDialog}>
                                 <UserPlus className="mr-2 h-4 w-4" />
                                 Asignar
                               </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => setOpenHandoff(true)}>
+                              <DropdownMenuItem onClick={openHandoffDialog}>
                                 <ArrowRightLeft className="mr-2 h-4 w-4" />
                                 Handoff
                               </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => setOpenNewSubtask(true)}>
+                              <DropdownMenuItem onClick={openNewSubtaskDialog}>
                                 <Plus className="mr-2 h-4 w-4" />
                                 Nueva subtarea
                               </DropdownMenuItem>
                               {canSendToCd && (
-                                <DropdownMenuItem onClick={() => setOpenSendToCd(true)}>
+                                <DropdownMenuItem onClick={openSendToCdDialog}>
                                   <Send className="mr-2 h-4 w-4" />
                                   Enviar CD
                                 </DropdownMenuItem>
@@ -644,19 +663,13 @@ export function TareasTaskCard({
                             <>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem
-                                onClick={() => {
-                                  setResolveApprove(true)
-                                  setOpenResolveCd(true)
-                                }}
+                                onClick={() => openResolveCdDialog(true)}
                               >
                                 <ThumbsUp className="mr-2 h-4 w-4" />
                                 Aprobar CD
                               </DropdownMenuItem>
                               <DropdownMenuItem
-                                onClick={() => {
-                                  setResolveApprove(false)
-                                  setOpenResolveCd(true)
-                                }}
+                                onClick={() => openResolveCdDialog(false)}
                               >
                                 <ThumbsDown className="mr-2 h-4 w-4" />
                                 Observar/Rechazar

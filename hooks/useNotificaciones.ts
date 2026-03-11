@@ -35,7 +35,7 @@ export function useNotificaciones() {
     }, [user])
 
     useEffect(() => {
-        fetchNotificaciones()
+        void fetchNotificaciones()
 
         if (!user) return
 
@@ -49,8 +49,8 @@ export function useNotificaciones() {
                     table: 'notificaciones',
                     filter: `usuario_id=eq.${user.id}`,
                 },
-                (payload: any) => {
-                    fetchNotificaciones()
+                () => {
+                    void fetchNotificaciones()
                 }
             )
             .subscribe()

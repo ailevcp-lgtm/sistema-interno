@@ -65,7 +65,10 @@ export function useDocumentos() {
 
     const updateArticulo = useCallback(async (id: string, contenido: string, titulo?: string) => {
         setLoading(true)
-        const updates: any = { contenido, updated_at: new Date().toISOString() }
+        const updates: { contenido: string; updated_at: string; titulo?: string } = {
+            contenido,
+            updated_at: new Date().toISOString(),
+        }
         if (titulo !== undefined) updates.titulo = titulo
 
         const { error } = await supabase

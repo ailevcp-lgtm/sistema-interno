@@ -50,6 +50,8 @@ export interface Usuario {
   apellido: string
   avatar_url?: string
   rol: Rol
+  rol_aile_id?: string | null
+  rol_aile_nombre?: string | null
 }
 
 export interface RolAileDefinition {

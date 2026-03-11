@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useMemo } from "react"
 import { useAuth } from "@/hooks/useAuth"
 import { useSocios } from "@/hooks/useSocios"
 import { Button } from "@/components/ui/button"
@@ -9,26 +9,17 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { getInitials, generateAvatarColor, formatDate } from "@/lib/utils"
 import { Loader2, Mail, Phone, Calendar, BadgeCheck, Shield } from "lucide-react"
+import type { Socio } from "@/lib/types"
 
 export default function MiPerfilPage() {
     const { user } = useAuth()
-    const { socios } = useSocios()
-    const [loading, setLoading] = useState(true)
-    const [userData, setUserData] = useState<any>(null)
+    const { socios, loading } = useSocios()
+    const userData = useMemo<Socio | null>(() => {
+        if (!user) return null
+        return socios.find((s) => s.email === user.email || s.usuario_id === user.id) || null
+    }, [socios, user])
 
-    useEffect(() => {
-        if (user && socios.length > 0) {
-            // Find socio record linked to this user
-            // Note: This matches by email since usuario_id might not be linked in imported data yet
-            const socio = socios.find(s => s.email === user.email || s.usuario_id === user.id)
-            setUserData(socio || null)
-            setLoading(false)
-        } else if (user) {
-            setLoading(false)
-        }
-    }, [user, socios])
-
-    if (loading) {
+    if (user && loading) {
         return (
             <div className="flex items-center justify-center h-96">
                 <Loader2 className="w-8 h-8 animate-spin text-primary" />

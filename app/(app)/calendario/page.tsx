@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import {
   CalendarDays,
@@ -565,12 +565,28 @@ export default function CalendarioPage() {
   const [editingPlanningId, setEditingPlanningId] = useState<string | null>(null)
   const [addDateComposerOpen, setAddDateComposerOpen] = useState(false)
   const [addDateComposerTab, setAddDateComposerTab] = useState<AddDateComposerTab>('reunion')
+  const [currentTime, setCurrentTime] = useState(() => new Date().getTime())
   const titleInputRef = useRef<HTMLInputElement | null>(null)
   const planningTitleInputRef = useRef<HTMLInputElement | null>(null)
   const savingMeeting = creating || updating
   const savingPlanning = creatingPlanning || updatingPlanning || deletingPlanning
   const planningSubmitDisabled = savingPlanning || (editingPlanningId ? !canEditPlanning : !canCreatePlanning)
   const canOpenDateComposer = canSchedule || canManagePlanning
+  const currentDate = useMemo(() => new Date(currentTime), [currentTime])
+  const currentDayKey = useMemo(() => dateKey(currentDate), [currentDate])
+
+  useEffect(() => {
+    const updateCurrentTime = () => {
+      setCurrentTime(new Date().getTime())
+    }
+
+    updateCurrentTime()
+    const intervalId = window.setInterval(updateCurrentTime, 60_000)
+
+    return () => {
+      window.clearInterval(intervalId)
+    }
+  }, [])
 
   const selectedDayKey = dateKey(selectedDate)
 
@@ -596,30 +612,26 @@ export default function CalendarioPage() {
   ), [tareasConVencimiento, selectedDayKey])
 
   const proximasReuniones = useMemo(() => {
-    const now = Date.now()
     return [...reuniones]
-      .filter((r) => new Date(r.fecha_fin).getTime() >= now)
+      .filter((r) => new Date(r.fecha_fin).getTime() >= currentTime)
       .sort((a, b) => new Date(a.fecha_inicio).getTime() - new Date(b.fecha_inicio).getTime())
-  }, [reuniones])
+  }, [currentTime, reuniones])
 
   const proximasPlanificaciones = useMemo(() => {
-    const todayKey = dateKey(new Date())
-    return planificacionesOrdenadas.filter((item) => item.fecha_fin >= todayKey)
-  }, [planificacionesOrdenadas])
+    return planificacionesOrdenadas.filter((item) => item.fecha_fin >= currentDayKey)
+  }, [currentDayKey, planificacionesOrdenadas])
 
   const proximosVencimientosTareas = useMemo(() => {
-    const todayKey = dateKey(new Date())
-    return tareasConVencimiento.filter((tarea) => tarea.fecha_limite >= todayKey)
-  }, [tareasConVencimiento])
+    return tareasConVencimiento.filter((tarea) => tarea.fecha_limite >= currentDayKey)
+  }, [currentDayKey, tareasConVencimiento])
 
   const reunionesSemana = useMemo(() => {
-    const now = Date.now()
-    const in7Days = now + 7 * 24 * 60 * 60 * 1000
+    const in7Days = currentTime + 7 * 24 * 60 * 60 * 1000
     return reuniones.filter((r) => {
       const start = new Date(r.fecha_inicio).getTime()
-      return start >= now && start <= in7Days
+      return start >= currentTime && start <= in7Days
     }).length
-  }, [reuniones])
+  }, [currentTime, reuniones])
 
   const planificacionesSemana = useMemo(() => {
     const today = new Date()

@@ -126,6 +126,17 @@ const COMISION_DIRECTIVA_ROLE_SET = new Set(
   COMISION_DIRECTIVA_ROLES_AILE.map((roleName) => normalizeInstitutionalRole(roleName))
 )
 
+interface UsuarioRoleRow {
+  id: string
+  email: string | null
+  nombre: string
+  apellido: string
+  rol: Rol | null
+  rol_aile_id?: string | null
+  rol_aile?: string | null
+  rol_aile_definition?: { nombre?: string | null } | null
+}
+
 function RolesTab() {
   const [usuarios, setUsuarios] = useState<Usuario[]>([])
   const [loading, setLoading] = useState(true)
@@ -188,14 +199,13 @@ function RolesTab() {
         })
 
       if (error) throw error
-      setUsuarios((data || []).map(s => ({
+      setUsuarios(((data || []) as UsuarioRoleRow[]).map((s) => ({
         id: s.id,
         email: s.email || '',
         nombre: s.nombre,
         apellido: s.apellido,
         rol: (s.rol as Rol) || 'socio',
         rol_aile_id: s.rol_aile_id,
-        // @ts-ignore - Handle joined data
         rol_aile_nombre: s.rol_aile_definition?.nombre || s.rol_aile || 'Sin rol'
       })))
     } catch (error) {
@@ -247,7 +257,6 @@ function RolesTab() {
           ...u,
           rol: newRole,
           rol_aile_id: newRoleAileId,
-          // @ts-ignore
           rol_aile_nombre: selectedRoleDef?.nombre || (newRoleAileId ? '...' : 'Sin rol')
         } : u)
       )
@@ -261,7 +270,6 @@ function RolesTab() {
     }
   }
 
-  // @ts-ignore
   const filteredUsers = usuarios.filter(u =>
     u.email.toLowerCase().includes(search.toLowerCase()) ||
     u.nombre.toLowerCase().includes(search.toLowerCase()) ||
@@ -316,7 +324,6 @@ function RolesTab() {
                   <TableCell className="text-muted-foreground">{usuario.email}</TableCell>
                   <TableCell>
                     <span className="text-sm font-medium">
-                      {/* @ts-ignore */}
                       {usuario.rol_aile_nombre}
                     </span>
                   </TableCell>
@@ -336,7 +343,6 @@ function RolesTab() {
                       onClick={() => {
                         setSelectedUser(usuario)
                         setNewRole(usuario.rol)
-                        // @ts-ignore
                         setNewRoleAileId(usuario.rol_aile_id || "")
                         setIsDialogOpen(true)
                       }}

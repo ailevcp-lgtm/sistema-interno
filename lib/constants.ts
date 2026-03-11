@@ -147,6 +147,7 @@ export const COMISION_DIRECTIVA_ROLES_AILE = [
 ] as const
 
 export const ROLE_PERMISSIONS_UPDATED_EVENT = 'aile:role-permissions-updated'
+export const AUTH_SESSION_RESUMED_EVENT = 'aile:auth-session-resumed'
 
 export function canAccessReintegrosModule(rol: Rol, rolAile?: string | null): boolean {
   if (isGlobalManager(rol, rolAile)) return true

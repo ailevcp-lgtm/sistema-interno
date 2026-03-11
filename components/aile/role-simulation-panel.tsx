@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useMemo, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -13,39 +13,34 @@ import type { Rol } from "@/lib/types"
 
 const SYSTEM_ROLES: Rol[] = ["socio", "revisor_cuentas", "comision_directiva", "admin"]
 
-export function RoleSimulationPanel() {
-  const {
-    canRoleSimulation,
-    isRoleSimulationActive,
-    roleSimulation,
-    setRoleSimulation,
-    clearRoleSimulation,
-    actualRol,
-    actualRolAile,
-  } = useAuth()
+interface RoleSimulationPanelContentProps {
+  actualRol: Rol
+  actualRolAile: string | null
+  isRoleSimulationActive: boolean
+  loading: boolean
+  roles: Array<{ id: string; nombre: string }>
+  roleSimulation: { rol: Rol; rolAile: string | null } | null
+  setRoleSimulation: (value: { rol: Rol; rolAile: string | null } | null) => void
+  clearRoleSimulation: () => void
+}
 
-  const { roles, loading } = useRoles()
-
-  const [selectedRol, setSelectedRol] = useState<Rol>(actualRol)
-  const [selectedRolAile, setSelectedRolAile] = useState<string>(actualRolAile || "")
-
-  useEffect(() => {
-    if (roleSimulation) {
-      setSelectedRol(roleSimulation.rol)
-      setSelectedRolAile(roleSimulation.rolAile || "")
-      return
-    }
-
-    setSelectedRol(actualRol)
-    setSelectedRolAile(actualRolAile || "")
-  }, [roleSimulation, actualRol, actualRolAile])
+function RoleSimulationPanelContent({
+  actualRol,
+  actualRolAile,
+  isRoleSimulationActive,
+  loading,
+  roles,
+  roleSimulation,
+  setRoleSimulation,
+  clearRoleSimulation,
+}: RoleSimulationPanelContentProps) {
+  const [selectedRol, setSelectedRol] = useState<Rol>(roleSimulation?.rol || actualRol)
+  const [selectedRolAile, setSelectedRolAile] = useState<string>(roleSimulation?.rolAile || actualRolAile || "")
 
   const selectedRoleExists = useMemo(
     () => !selectedRolAile || roles.some((role) => role.nombre === selectedRolAile),
     [roles, selectedRolAile]
   )
-
-  if (!canRoleSimulation) return null
 
   return (
     <Card className="border-primary/20 bg-primary/5">
@@ -118,5 +113,37 @@ export function RoleSimulationPanel() {
         </div>
       </CardContent>
     </Card>
+  )
+}
+
+export function RoleSimulationPanel() {
+  const {
+    canRoleSimulation,
+    isRoleSimulationActive,
+    roleSimulation,
+    setRoleSimulation,
+    clearRoleSimulation,
+    actualRol,
+    actualRolAile,
+  } = useAuth()
+
+  const { roles, loading } = useRoles()
+
+  if (!canRoleSimulation) return null
+
+  const formKey = `${roleSimulation?.rol || actualRol}:${roleSimulation?.rolAile || actualRolAile || ""}`
+
+  return (
+    <RoleSimulationPanelContent
+      key={formKey}
+      actualRol={actualRol}
+      actualRolAile={actualRolAile}
+      isRoleSimulationActive={isRoleSimulationActive}
+      loading={loading}
+      roles={roles}
+      roleSimulation={roleSimulation}
+      setRoleSimulation={setRoleSimulation}
+      clearRoleSimulation={clearRoleSimulation}
+    />
   )
 }

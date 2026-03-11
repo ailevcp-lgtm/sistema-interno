@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { ArrowDown, ArrowUp, ChevronDown, Pencil, Plus, ShieldAlert, Trash2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -169,12 +169,13 @@ export function TareasProjectBoard({
   const [editProjectType, setEditProjectType] = useState<ProyectoTarea['tipo']>(project.tipo)
   const [editProjectDirection, setEditProjectDirection] = useState<DireccionBase>('CEA')
 
-  useEffect(() => {
+  const openProjectEditor = () => {
     setEditProjectName(project.nombre)
     setEditProjectDescription(project.descripcion || '')
     setEditProjectType(project.tipo)
     setEditProjectDirection(project.direccion || 'CEA')
-  }, [project.descripcion, project.direccion, project.nombre, project.tipo])
+    setOpenEditProject(true)
+  }
 
   const submitProjectUpdate = async () => {
     if (!editProjectName.trim()) return
@@ -264,7 +265,7 @@ export function TareasProjectBoard({
               )}
 
               {access.canManage && (
-                <Button size="sm" variant="outline" onClick={() => setOpenEditProject(true)} disabled={busy}>
+                <Button size="sm" variant="outline" onClick={openProjectEditor} disabled={busy}>
                   <Pencil className="mr-1.5 h-4 w-4" />
                   Editar proyecto
                 </Button>

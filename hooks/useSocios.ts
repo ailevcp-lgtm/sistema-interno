@@ -19,6 +19,10 @@ interface SociosFilters {
   page: number
 }
 
+interface SocioWithRoleDefinition extends Socio {
+  rol_aile_definition?: { nombre?: string | null } | null
+}
+
 export function useSocios(enabled: boolean = true) {
   const [socios, setSocios] = useState<Socio[]>([])
   const [loading, setLoading] = useState(true)
@@ -67,11 +71,12 @@ export function useSocios(enabled: boolean = true) {
         throw error
       }
 
-      // @ts-ignore
-      setSocios((data || []).map((s) => ({
+      const normalizedSocios = ((data || []) as SocioWithRoleDefinition[]).map((s) => ({
         ...s,
-        rol_aile: s.rol_aile_definition?.nombre || s.rol_aile
-      })) as Socio[])
+        rol_aile: s.rol_aile_definition?.nombre || s.rol_aile,
+      }))
+
+      setSocios(normalizedSocios)
     } catch (error) {
       console.error('Error fetching socios:', error)
       if (showBlockingLoader) {

@@ -106,7 +106,7 @@ async function main() {
 
         if (historicCount > 0) {
             console.log(`    Creating ${historicCount} historic quotas for ${rawName}`)
-            let date = new Date(2025, 11, 1) // Dec 2025
+            const date = new Date(2025, 11, 1) // Dec 2025
 
             for (let i = 0; i < historicCount; i++) {
                 const year = date.getFullYear()
