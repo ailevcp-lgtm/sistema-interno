@@ -2,6 +2,7 @@
   "name": "my-project",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@10.32.1",
   "scripts": {
     "dev": "NODE_OPTIONS='--max-http-header-size=65536' next dev --webpack --hostname 127.0.0.1 --port 3000",
     "build": "next build",
