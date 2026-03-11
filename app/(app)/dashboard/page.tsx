@@ -7,6 +7,7 @@ import {
   AlertTriangle,
   Wallet,
   FileText,
+  BookOpen,
   CalendarDays,
   Megaphone,
   ArrowRight,
@@ -543,6 +544,18 @@ export default function DashboardPage() {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            <Button
+              variant="outline"
+              size="sm"
+              asChild
+              className="w-full min-w-0 justify-start bg-muted border-border text-foreground hover:bg-muted/80"
+            >
+              <Link href="/guia">
+                <BookOpen className="mr-2 h-4 w-4 shrink-0" />
+                <span className="truncate">Abrir guía</span>
+              </Link>
+            </Button>
+
             <Button
               variant="outline"
               size="sm"

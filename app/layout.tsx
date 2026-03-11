@@ -1,9 +1,18 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { Lato } from 'next/font/google'
 
 import './globals.css'
 import { AuthProvider } from '@/hooks/useAuth'
 import { Toaster } from '@/components/ui/sonner'
+import {
+  ICON_VERSION,
+  SITE_DESCRIPTION,
+  SITE_KEYWORDS,
+  SITE_LOCALE,
+  SITE_NAME,
+  SOCIAL_IMAGE,
+  getSiteUrl,
+} from '@/lib/site-config'
 
 const lato = Lato({
   subsets: ['latin'],
@@ -12,13 +21,74 @@ const lato = Lato({
 })
 
 export const metadata: Metadata = {
-  title: 'AILE — Panel Interno',
-  description: 'Panel de gestión interna - Asociación Independiente para Líderes Empoderados',
-  icons: {
-    icon: '/icon.png',
-    shortcut: '/icon.png',
-    apple: '/apple-icon.png',
+  metadataBase: getSiteUrl(),
+  title: {
+    default: SITE_NAME,
+    template: `%s | ${SITE_NAME}`,
   },
+  description: SITE_DESCRIPTION,
+  applicationName: SITE_NAME,
+  authors: [{ name: 'AILE' }],
+  creator: 'AILE',
+  publisher: 'AILE',
+  keywords: SITE_KEYWORDS,
+  alternates: {
+    canonical: '/',
+  },
+  formatDetection: {
+    email: false,
+    address: false,
+    telephone: false,
+  },
+  icons: {
+    icon: [
+      { url: `/icon?v=${ICON_VERSION}`, type: 'image/png', sizes: '512x512' },
+    ],
+    shortcut: [{ url: `/favicon.ico?v=${ICON_VERSION}` }],
+    apple: [{ url: `/apple-icon?v=${ICON_VERSION}`, sizes: '180x180', type: 'image/png' }],
+  },
+  manifest: '/manifest.webmanifest',
+  appleWebApp: {
+    title: SITE_NAME,
+    capable: true,
+    statusBarStyle: 'default',
+  },
+  openGraph: {
+    title: SITE_NAME,
+    description: SITE_DESCRIPTION,
+    url: '/',
+    siteName: SITE_NAME,
+    locale: SITE_LOCALE,
+    type: 'website',
+    images: [
+      {
+        url: SOCIAL_IMAGE.path,
+        width: SOCIAL_IMAGE.width,
+        height: SOCIAL_IMAGE.height,
+        alt: SOCIAL_IMAGE.alt,
+      },
+    ],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: SITE_NAME,
+    description: SITE_DESCRIPTION,
+    images: [SOCIAL_IMAGE.path],
+  },
+  robots: {
+    index: false,
+    follow: false,
+    nocache: true,
+    googleBot: {
+      index: false,
+      follow: false,
+      noimageindex: false,
+    },
+  },
+}
+
+export const viewport: Viewport = {
+  themeColor: '#6314A7',
 }
 
 export default function RootLayout({

@@ -11,6 +11,13 @@ interface SocioAuthGateRow {
 
 const SOCIO_GATE_SELECT = 'id, usuario_id, email, estado'
 const PROXY_AUTH_TIMEOUT_MS = 8_000
+const PUBLIC_FILE_PATTERN = /\.[^/]+$/
+const PUBLIC_METADATA_PATHS = new Set([
+  '/icon',
+  '/apple-icon',
+  '/opengraph-image',
+  '/twitter-image',
+])
 type MiddlewareSupabaseClient = ReturnType<typeof createSupabaseMiddlewareClient>['supabase']
 
 class ProxyTimeoutError extends Error {
@@ -23,10 +30,15 @@ class ProxyTimeoutError extends Error {
 function isPublicPath(pathname: string): boolean {
   return (
     pathname === '/login'
+    || pathname === '/guia-pdf'
+    || pathname === '/guia-rapida-pdf'
     || pathname.startsWith('/auth/callback')
     || pathname.startsWith('/auth/clear-cookies')
+    || PUBLIC_METADATA_PATHS.has(pathname)
     || pathname.startsWith('/_next')
     || pathname.startsWith('/api')
+    || pathname.startsWith('/images')
+    || PUBLIC_FILE_PATTERN.test(pathname)
   )
 }
 
@@ -216,5 +228,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|public).*)'],
+  matcher: ['/((?!api|_next/static|_next/image|favicon.ico|.*\\..*).*)'],
 }

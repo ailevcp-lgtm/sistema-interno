@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <linearGradient id="aile-favicon-gradient" x1="7" y1="6" x2="58" y2="60" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#6314A7" />
+      <stop offset="0.56" stop-color="#7D2BC0" />
+      <stop offset="1" stop-color="#E50051" />
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="18" fill="url(#aile-favicon-gradient)" />
+  <path d="M32 10.5 48 24.5 42 47H22L16 24.5 32 10.5Z" fill="#fff" />
+  <path d="M32 10.5 40 24.5H24L32 10.5Z" fill="#F7F2FF" />
+  <path d="M16 24.5h8L22 47l-6-22.5Z" fill="#EFE5FF" />
+  <path d="M48 24.5h-8L42 47l6-22.5Z" fill="#E7DBFF" />
+  <path d="M24 24.5h16L32 47l-8-22.5Z" fill="#D7C2FF" />
+  <path d="M24 24.5 32 34l8-9.5H24Z" fill="#C7ABFF" />
+</svg>

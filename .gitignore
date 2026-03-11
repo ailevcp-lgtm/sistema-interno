@@ -51,3 +51,6 @@ scripts/node_modules/
 
 # log files
 *.log
+
+# local git backup artifacts
+.git_broken_backup/

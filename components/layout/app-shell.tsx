@@ -5,7 +5,9 @@ import { usePathname, useRouter } from "next/navigation"
 import { AileSidebar } from "@/components/aile/sidebar"
 import { AileHeader } from "@/components/aile/header"
 import { BottomNav } from "@/components/aile/bottom-nav"
+import { GuideContextBar } from "@/components/aile/guide/guide-context-bar"
 import { useAuth } from "@/hooks/useAuth"
+import { getGuideHrefForPath } from "@/lib/guide-content"
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
@@ -17,6 +19,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   // Determinar página actual basada en pathname
   const currentPage = pathname?.split("/")[1] || "dashboard"
+  const guideHref = getGuideHrefForPath(pathname)
 
   // Mapeo de IDs a Labels para el header
   const pageLabels: Record<string, string> = {
@@ -30,6 +33,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     reintegros: "Reintegros",
     documentos: "Documentos",
     configuracion: "Configuración",
+    "mi-perfil": "Mi perfil",
+    "mi-cuenta": "Mi estado de cuenta",
+    guia: "Guía de uso",
   }
 
   const handleNavigate = (page: string) => {
@@ -57,9 +63,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <AileHeader
           currentPage={currentPage}
           pageLabel={pageLabels[currentPage] || "Inicio"}
+          guideHref={guideHref}
         />
 
         <main className="flex-1 p-4 lg:p-8 pb-24 lg:pb-8 bg-background">
+          <div className="mb-6">
+            <GuideContextBar
+              pathname={pathname || ""}
+              pageLabel={pageLabels[currentPage] || "Inicio"}
+            />
+          </div>
           {children}
         </main>
       </div>

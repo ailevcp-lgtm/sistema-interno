@@ -1,6 +1,6 @@
 "use client"
 
-import { Search, ChevronDown, User, LogOut, CreditCard, ShieldAlert } from "lucide-react"
+import { Search, ChevronDown, User, LogOut, CreditCard, ShieldAlert, BookOpen } from "lucide-react"
 import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -24,9 +24,10 @@ const roleStyles: Record<string, { bg: string; text: string; label: string }> = 
 interface HeaderProps {
   currentPage: string
   pageLabel: string
+  guideHref: string
 }
 
-export function AileHeader({ currentPage, pageLabel }: HeaderProps) {
+export function AileHeader({ currentPage, pageLabel, guideHref }: HeaderProps) {
   const { user: authUser, signOut, rol, rolAile, isRoleSimulationActive, clearRoleSimulation } = useAuth()
 
   const user = {
@@ -74,6 +75,14 @@ export function AileHeader({ currentPage, pageLabel }: HeaderProps) {
 
       {/* Right side */}
       <div className="flex items-center gap-2">
+        <Link
+          href={guideHref}
+          className="inline-flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+        >
+          <BookOpen className="w-4 h-4" />
+          <span className="hidden sm:inline">Guía</span>
+        </Link>
+
         <NotificationsPopover />
 
         <DropdownMenu>
