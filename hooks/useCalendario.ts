@@ -13,6 +13,8 @@ import type {
   SocioCalendario,
   TareaVencimientoCalendario,
 } from '@/lib/types'
+import { sendEmailNotificationFromClient } from '@/lib/email/client'
+import type { EmailRecipient } from '@/lib/email/types'
 
 interface SocioCalendarioRow {
   id: string
@@ -577,7 +579,36 @@ export function useCalendario() {
       toast.success('Reunión agendada y notificaciones enviadas')
       await fetchReuniones()
 
-      return (Array.isArray(data) ? data[0] : data) as ReunionCalendario
+      const reunion = (Array.isArray(data) ? data[0] : data) as ReunionCalendario
+
+      // Enviar notificación por email a todos los participantes
+      const allParticipantIds = [...involucrados, ...invitados]
+      if (allParticipantIds.length > 0) {
+        const participantRecipients: EmailRecipient[] = sociosDisponibles
+          .filter((s) => allParticipantIds.includes(s.usuario_id) && s.usuario_id !== userId && s.email)
+          .map((s) => ({
+            socio_id: s.id,
+            email: s.email!,
+            nombre: s.nombre,
+            apellido: s.apellido,
+          }))
+
+        const creatorSocio = sociosDisponibles.find((s) => s.usuario_id === userId)
+        const creatorName = creatorSocio ? `${creatorSocio.nombre} ${creatorSocio.apellido}` : 'Un miembro'
+
+        void sendEmailNotificationFromClient('calendario_reunion_nueva', participantRecipients, {
+          type: 'calendario_reunion_nueva',
+          reunion_titulo: payload.titulo,
+          reunion_fecha: payload.fechaInicio,
+          reunion_fecha_fin: payload.fechaFin,
+          reunion_lugar: payload.lugar || null,
+          reunion_alcance: payload.alcance,
+          creado_por_nombre: creatorName,
+          participacion: null,
+        })
+      }
+
+      return reunion
     } catch (error) {
       console.error('Error scheduling meeting:', toErrorDetails(error))
       toast.error(toErrorDetails(error) || 'No se pudo agendar la reunión')
@@ -585,7 +616,7 @@ export function useCalendario() {
     } finally {
       setCreating(false)
     }
-  }, [calendarAvailable, canSchedule, fetchReuniones])
+  }, [calendarAvailable, canSchedule, fetchReuniones, sociosDisponibles, userId])
 
   const actualizarReunion = useCallback(async (payload: ActualizarReunionPayload) => {
     if (!calendarAvailable) {
@@ -624,7 +655,34 @@ export function useCalendario() {
       toast.success('Reunión actualizada correctamente')
       await fetchReuniones()
 
-      return (Array.isArray(data) ? data[0] : data) as ReunionCalendario
+      const reunion = (Array.isArray(data) ? data[0] : data) as ReunionCalendario
+
+      // Notificar a participantes sobre la modificación
+      const allParticipantIds = [...involucrados, ...invitados]
+      if (allParticipantIds.length > 0) {
+        const participantRecipients: EmailRecipient[] = sociosDisponibles
+          .filter((s) => allParticipantIds.includes(s.usuario_id) && s.usuario_id !== userId && s.email)
+          .map((s) => ({
+            socio_id: s.id,
+            email: s.email!,
+            nombre: s.nombre,
+            apellido: s.apellido,
+          }))
+
+        const modifierSocio = sociosDisponibles.find((s) => s.usuario_id === userId)
+        const modifierName = modifierSocio ? `${modifierSocio.nombre} ${modifierSocio.apellido}` : 'Un miembro'
+
+        void sendEmailNotificationFromClient('calendario_reunion_modificada', participantRecipients, {
+          type: 'calendario_reunion_modificada',
+          reunion_titulo: payload.titulo,
+          reunion_fecha: payload.fechaInicio,
+          reunion_fecha_fin: payload.fechaFin,
+          reunion_lugar: payload.lugar || null,
+          modificado_por_nombre: modifierName,
+        })
+      }
+
+      return reunion
     } catch (error) {
       console.error('Error updating meeting:', toErrorDetails(error))
       toast.error(toErrorDetails(error) || 'No se pudo actualizar la reunión')
@@ -632,7 +690,7 @@ export function useCalendario() {
     } finally {
       setUpdating(false)
     }
-  }, [calendarAvailable, canSchedule, fetchReuniones])
+  }, [calendarAvailable, canSchedule, fetchReuniones, sociosDisponibles, userId])
 
   const crearPlanificacion = useCallback(async (payload: CrearPlanificacionPayload) => {
     if (!planningAvailable) {
@@ -665,7 +723,34 @@ export function useCalendario() {
 
       toast.success('Fecha de planificación creada')
       await fetchPlanificaciones()
-      return data as PlanificacionCalendario
+
+      const planificacion = data as PlanificacionCalendario
+
+      // Si es definitivo, notificar a TODOS los usuarios del sistema
+      if (payload.estado === 'definitivo') {
+        const creatorSocio = sociosDisponibles.find((s) => s.usuario_id === userId)
+        const creatorName = creatorSocio ? `${creatorSocio.nombre} ${creatorSocio.apellido}` : 'Un miembro'
+
+        const allRecipients: EmailRecipient[] = sociosDisponibles
+          .filter((s) => s.usuario_id !== userId && s.email)
+          .map((s) => ({
+            socio_id: s.id,
+            email: s.email!,
+            nombre: s.nombre,
+            apellido: s.apellido,
+          }))
+
+        void sendEmailNotificationFromClient('calendario_planificacion_definitiva', allRecipients, {
+          type: 'calendario_planificacion_definitiva',
+          planificacion_titulo: payload.titulo,
+          planificacion_fecha_inicio: payload.fechaInicio,
+          planificacion_fecha_fin: payload.fechaFin,
+          planificacion_descripcion: payload.descripcion || null,
+          definido_por_nombre: creatorName,
+        })
+      }
+
+      return planificacion
     } catch (error) {
       console.error('Error creating planning date:', toErrorDetails(error))
       toast.error(toErrorDetails(error) || 'No se pudo crear la fecha de planificación')
@@ -673,7 +758,7 @@ export function useCalendario() {
     } finally {
       setCreatingPlanning(false)
     }
-  }, [canCreatePlanning, fetchPlanificaciones, planningAvailable])
+  }, [canCreatePlanning, fetchPlanificaciones, planningAvailable, sociosDisponibles, userId])
 
   const actualizarPlanificacion = useCallback(async (payload: ActualizarPlanificacionPayload) => {
     if (!planningAvailable) {
@@ -707,7 +792,34 @@ export function useCalendario() {
 
       toast.success('Fecha de planificación actualizada')
       await fetchPlanificaciones()
-      return data as PlanificacionCalendario
+
+      const planificacion = data as PlanificacionCalendario
+
+      // Si se cambió a definitivo, notificar a TODOS los usuarios
+      if (payload.estado === 'definitivo') {
+        const editorSocio = sociosDisponibles.find((s) => s.usuario_id === userId)
+        const editorName = editorSocio ? `${editorSocio.nombre} ${editorSocio.apellido}` : 'Un miembro'
+
+        const allRecipients: EmailRecipient[] = sociosDisponibles
+          .filter((s) => s.usuario_id !== userId && s.email)
+          .map((s) => ({
+            socio_id: s.id,
+            email: s.email!,
+            nombre: s.nombre,
+            apellido: s.apellido,
+          }))
+
+        void sendEmailNotificationFromClient('calendario_planificacion_definitiva', allRecipients, {
+          type: 'calendario_planificacion_definitiva',
+          planificacion_titulo: payload.titulo,
+          planificacion_fecha_inicio: payload.fechaInicio,
+          planificacion_fecha_fin: payload.fechaFin,
+          planificacion_descripcion: payload.descripcion || null,
+          definido_por_nombre: editorName,
+        })
+      }
+
+      return planificacion
     } catch (error) {
       console.error('Error updating planning date:', toErrorDetails(error))
       toast.error(toErrorDetails(error) || 'No se pudo actualizar la fecha de planificación')
@@ -715,7 +827,7 @@ export function useCalendario() {
     } finally {
       setUpdatingPlanning(false)
     }
-  }, [canEditPlanning, fetchPlanificaciones, planningAvailable])
+  }, [canEditPlanning, fetchPlanificaciones, planningAvailable, sociosDisponibles, userId])
 
   const eliminarPlanificacion = useCallback(async (planificacionId: string) => {
     if (!planningAvailable) {

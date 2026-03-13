@@ -8,6 +8,8 @@ import {
 } from '@/lib/types'
 import { toast } from 'sonner'
 import { runWithRecovery } from '@/lib/async-recovery'
+import { sendEmailNotificationFromClient } from '@/lib/email/client'
+import type { EmailRecipient } from '@/lib/email/types'
 
 export function useDocumentos() {
     const [loading, setLoading] = useState(false)
@@ -156,6 +158,17 @@ export function useDocumentos() {
         }
     }, [])
 
+    const notifyAllSocios = useCallback(async () => {
+        const { data: socios } = await supabase
+            .from('socios')
+            .select('id, usuario_id, nombre, apellido, email')
+            .eq('estado', 'activo')
+            .not('usuario_id', 'is', null)
+            .not('email', 'is', null)
+
+        return (socios || []) as Array<{ id: string; usuario_id: string; nombre: string; apellido: string; email: string }>
+    }, [])
+
     const createResolucion = useCallback(async (data: Omit<Resolucion, 'id' | 'created_at'>) => {
         setLoading(true)
         const { data: newRes, error } = await supabase
@@ -170,8 +183,56 @@ export function useDocumentos() {
             throw error
         }
         toast.success('Resolución creada correctamente')
-        return newRes as Resolucion
-    }, [])
+
+        const resolucion = newRes as Resolucion
+
+        // Notificar a todos los socios sobre nueva resolución/decreto
+        void (async () => {
+            try {
+                const socios = await notifyAllSocios()
+                const { data: sessionData } = await supabase.auth.getSession()
+                const currentUserId = sessionData.session?.user?.id
+                const currentSocio = socios.find((s) => s.usuario_id === currentUserId)
+                const creatorName = currentSocio ? `${currentSocio.nombre} ${currentSocio.apellido}` : 'Un miembro'
+
+                const recipients: EmailRecipient[] = socios
+                    .filter((s) => s.usuario_id !== currentUserId)
+                    .map((s) => ({
+                        socio_id: s.id,
+                        email: s.email,
+                        nombre: s.nombre,
+                        apellido: s.apellido,
+                    }))
+
+                const isDecreto = data.tipo === 'decreto'
+                const notifType = isDecreto ? 'decreto_nuevo' as const : 'resolucion_nueva' as const
+
+                if (isDecreto) {
+                    void sendEmailNotificationFromClient(notifType, recipients, {
+                        type: 'decreto_nuevo',
+                        decreto_titulo: resolucion.titulo,
+                        decreto_numero: resolucion.numero,
+                        decreto_anio: resolucion.anio,
+                        decreto_fecha: resolucion.fecha,
+                        creado_por_nombre: creatorName,
+                    })
+                } else {
+                    void sendEmailNotificationFromClient(notifType, recipients, {
+                        type: 'resolucion_nueva',
+                        resolucion_titulo: resolucion.titulo,
+                        resolucion_numero: resolucion.numero,
+                        resolucion_anio: resolucion.anio,
+                        resolucion_fecha: resolucion.fecha,
+                        creado_por_nombre: creatorName,
+                    })
+                }
+            } catch (err) {
+                console.warn('Error enviando notificación de resolución:', err)
+            }
+        })()
+
+        return resolucion
+    }, [notifyAllSocios])
 
     const updateResolucion = useCallback(async (id: string, data: Partial<Resolucion>) => {
         setLoading(true)

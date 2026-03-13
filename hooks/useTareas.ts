@@ -20,6 +20,8 @@ import type {
   TipoProyectoTarea,
   UsuarioAsignableTarea,
 } from '@/lib/types'
+import { sendEmailNotificationFromClient } from '@/lib/email/client'
+import type { EmailRecipient, EmailNotificationData } from '@/lib/email/types'
 
 const PROJECT_TABLE_CANDIDATES = [
   'proyectos_tareas',
@@ -692,6 +694,32 @@ export function useTareas() {
     throw new FrontendPermissionError(message)
   }, [])
 
+  const currentUserName = useMemo(() => {
+    if (!user) return ''
+    const socio = socioById.get(user.socio_id)
+    return socio ? `${socio.nombre} ${socio.apellido}` : user.email
+  }, [user, socioById])
+
+  const buildRecipient = useCallback((socioId: string | null | undefined): EmailRecipient | null => {
+    if (!socioId) return null
+    const socio = socioById.get(socioId)
+    if (!socio?.email) return null
+    // No enviar email al usuario actual
+    if (user && socio.socio_id === user.socio_id) return null
+    return {
+      socio_id: socio.socio_id,
+      email: socio.email,
+      nombre: socio.nombre,
+      apellido: socio.apellido,
+    }
+  }, [socioById, user])
+
+  const fireEmail = useCallback((data: EmailNotificationData, recipients: (EmailRecipient | null)[]) => {
+    const valid = recipients.filter((r): r is EmailRecipient => r !== null)
+    if (valid.length === 0) return
+    void sendEmailNotificationFromClient(data.type, valid, data)
+  }, [])
+
   const callRpcWithFallback = useCallback(async (actionLabel: string, attempts: RpcAttempt[]) => {
     let lastError: unknown = null
 
@@ -1301,7 +1329,7 @@ export function useTareas() {
       asignado_socio_id: assigneeSocioId,
     }
 
-    return runMutation(
+    const result = await runMutation(
       'create-task',
       'crear tarea',
       async () => callRpcWithFallback('crear tarea', [
@@ -1310,7 +1338,25 @@ export function useTareas() {
       ]),
       'Tarea creada'
     )
-  }, [callRpcWithFallback, canManageProject, hasDirectionScope, projectById, roleTaskPermissions.canCreate, runMutation, throwPermissionError, usuarioById])
+
+    // Notificar al asignado si se asignó al crear
+    if (assigneeSocioId) {
+      fireEmail(
+        {
+          type: 'tarea_asignada',
+          tarea_titulo: payload.titulo,
+          proyecto_nombre: project.nombre,
+          asignado_por_nombre: currentUserName,
+          prioridad: null,
+          fecha_limite: payload.fecha_limite || null,
+          descripcion: payload.descripcion || null,
+        },
+        [buildRecipient(assigneeSocioId)]
+      )
+    }
+
+    return result
+  }, [buildRecipient, callRpcWithFallback, canManageProject, currentUserName, fireEmail, hasDirectionScope, projectById, roleTaskPermissions.canCreate, runMutation, throwPermissionError, usuarioById])
 
   const createSubtask = useCallback(async (payload: CrearSubtareaPayload) => {
     const parentTask = taskById.get(payload.tarea_id)
@@ -1338,7 +1384,7 @@ export function useTareas() {
       asignado_socio_id: assigneeSocioId,
     }
 
-    return runMutation(
+    const result = await runMutation(
       'create-subtask',
       'crear subtarea',
       async () => callRpcWithFallback('crear subtarea', [
@@ -1347,7 +1393,23 @@ export function useTareas() {
       ]),
       'Subtarea creada'
     )
-  }, [callRpcWithFallback, canManageTask, projectById, roleTaskPermissions.canCreate, runMutation, taskById, throwPermissionError, usuarioById])
+
+    // Notificar al asignado de la tarea padre
+    if (parentTask.asignado_socio_id) {
+      fireEmail(
+        {
+          type: 'subtarea_creada',
+          subtarea_titulo: payload.titulo,
+          tarea_titulo: parentTask.titulo,
+          proyecto_nombre: project.nombre,
+          creado_por_nombre: currentUserName,
+        },
+        [buildRecipient(parentTask.asignado_socio_id)]
+      )
+    }
+
+    return result
+  }, [buildRecipient, callRpcWithFallback, canManageTask, currentUserName, fireEmail, projectById, roleTaskPermissions.canCreate, runMutation, taskById, throwPermissionError, usuarioById])
 
   const assignTask = useCallback(async (
     taskId: string,
@@ -1366,7 +1428,7 @@ export function useTareas() {
       throw new Error('No se pudo determinar el socio destino para la asignación')
     }
 
-    return runMutation(
+    const result = await runMutation(
       'assign-task',
       'asignar tarea',
       async () => callRpcWithFallback('asignar tarea', [
@@ -1388,7 +1450,23 @@ export function useTareas() {
       ]),
       'Tarea asignada'
     )
-  }, [callRpcWithFallback, canManageTask, runMutation, taskById, throwPermissionError, usuarioById])
+
+    const project = projectById.get(task.proyecto_id)
+    fireEmail(
+      {
+        type: 'tarea_asignada',
+        tarea_titulo: task.titulo,
+        proyecto_nombre: project?.nombre || 'Proyecto',
+        asignado_por_nombre: currentUserName,
+        prioridad: task.prioridad,
+        fecha_limite: task.fecha_limite,
+        descripcion: task.descripcion,
+      },
+      [buildRecipient(targetSocioId)]
+    )
+
+    return result
+  }, [buildRecipient, callRpcWithFallback, canManageTask, currentUserName, fireEmail, projectById, runMutation, taskById, throwPermissionError, usuarioById])
 
   const handoffTask = useCallback(async (
     taskId: string,
@@ -1408,7 +1486,7 @@ export function useTareas() {
       throw new Error('No se pudo determinar el socio destino para el handoff')
     }
 
-    return runMutation(
+    const result = await runMutation(
       'handoff-task',
       'realizar handoff',
       async () => callRpcWithFallback('handoff de tarea', [
@@ -1431,7 +1509,21 @@ export function useTareas() {
       ]),
       'Handoff aplicado'
     )
-  }, [callRpcWithFallback, canManageTask, runMutation, taskById, throwPermissionError, usuarioById])
+
+    const project = projectById.get(task.proyecto_id)
+    fireEmail(
+      {
+        type: 'handoff_solicitado',
+        tarea_titulo: task.titulo,
+        proyecto_nombre: project?.nombre || 'Proyecto',
+        solicitado_por_nombre: currentUserName,
+        motivo: note || null,
+      },
+      [buildRecipient(targetSocioId)]
+    )
+
+    return result
+  }, [buildRecipient, callRpcWithFallback, canManageTask, currentUserName, fireEmail, projectById, runMutation, taskById, throwPermissionError, usuarioById])
 
   const deleteTask = useCallback(async (taskId: string) => {
     const task = taskById.get(taskId)
@@ -1462,7 +1554,9 @@ export function useTareas() {
       throwPermissionError('Solo gestión o persona asignada puede mover esta tarea.')
     }
 
-    return runMutation(
+    const previousState = task.estado
+
+    const result = await runMutation(
       'move-task',
       'mover tarea',
       async () => callRpcWithFallback('mover tarea', [
@@ -1486,7 +1580,26 @@ export function useTareas() {
         },
       ])
     )
-  }, [callRpcWithFallback, canManageTask, isAssignedToCurrentUser, runMutation, taskById, throwPermissionError])
+
+    // Notificar cambio de estado al asignado y creador
+    const project = projectById.get(task.proyecto_id)
+    fireEmail(
+      {
+        type: 'tarea_estado_cambio',
+        tarea_titulo: task.titulo,
+        proyecto_nombre: project?.nombre || 'Proyecto',
+        estado_anterior: previousState,
+        estado_nuevo: status,
+        cambiado_por_nombre: currentUserName,
+      },
+      [
+        buildRecipient(task.asignado_socio_id),
+        buildRecipient(task.created_by),
+      ]
+    )
+
+    return result
+  }, [buildRecipient, callRpcWithFallback, canManageTask, currentUserName, fireEmail, isAssignedToCurrentUser, projectById, runMutation, taskById, throwPermissionError])
 
   const updateAssignedTask = useCallback(async (taskId: string, payload: ActualizarTareaPayload) => {
     const task = taskById.get(taskId)
@@ -1596,7 +1709,7 @@ export function useTareas() {
       throwPermissionError('No tienes permisos para enviar esta tarea a CD.')
     }
 
-    return runMutation(
+    const result = await runMutation(
       'send-cd',
       'enviar a CD',
       async () => callRpcWithFallback('enviar a CD', [
@@ -1617,7 +1730,26 @@ export function useTareas() {
       ]),
       'Tarea enviada a CD'
     )
-  }, [callRpcWithFallback, canSendTaskToCd, runMutation, taskById, throwPermissionError])
+
+    // Notificar a miembros de CD
+    const project = projectById.get(task.proyecto_id)
+    const cdRecipients = usuariosAsignables
+      .filter((u) => u.rol === 'comision_directiva' || u.rol === 'admin')
+      .map((u) => buildRecipient(u.socio_id))
+
+    fireEmail(
+      {
+        type: 'aprobacion_cd_pendiente',
+        tarea_titulo: task.titulo,
+        proyecto_nombre: project?.nombre || 'Proyecto',
+        enviado_por_nombre: currentUserName,
+        comentario: comment || null,
+      },
+      cdRecipients
+    )
+
+    return result
+  }, [buildRecipient, callRpcWithFallback, canSendTaskToCd, currentUserName, fireEmail, projectById, runMutation, taskById, throwPermissionError, usuariosAsignables])
 
   const resolveTaskCd = useCallback(async (taskId: string, approve: boolean, comment?: string) => {
     const task = taskById.get(taskId)
@@ -1632,7 +1764,7 @@ export function useTareas() {
       throw new Error('No se encontró aprobación pendiente para resolver')
     }
 
-    return runMutation(
+    const result = await runMutation(
       approve ? 'approve-cd' : 'reject-cd',
       approve ? 'aprobar en CD' : 'rechazar en CD',
       async () => callRpcWithFallback('resolver aprobación de CD', [
@@ -1655,7 +1787,26 @@ export function useTareas() {
       ]),
       approve ? 'Aprobación registrada' : 'Rechazo registrado'
     )
-  }, [callRpcWithFallback, canResolveTaskCd, getPendingApprovalForTask, runMutation, taskById, throwPermissionError])
+
+    // Notificar al asignado y creador de la tarea
+    const project = projectById.get(task.proyecto_id)
+    fireEmail(
+      {
+        type: 'aprobacion_cd_resuelta',
+        tarea_titulo: task.titulo,
+        proyecto_nombre: project?.nombre || 'Proyecto',
+        decision: approve ? 'aprobada' : 'rechazada',
+        resuelto_por_nombre: currentUserName,
+        observacion: comment || null,
+      },
+      [
+        buildRecipient(task.asignado_socio_id),
+        buildRecipient(task.created_by),
+      ]
+    )
+
+    return result
+  }, [buildRecipient, callRpcWithFallback, canResolveTaskCd, currentUserName, fireEmail, getPendingApprovalForTask, projectById, runMutation, taskById, throwPermissionError])
 
   const retryBackendCheck = useCallback(async () => {
     setBackendAvailable(true)
