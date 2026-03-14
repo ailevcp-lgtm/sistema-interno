@@ -55,15 +55,26 @@ export function EmailPreferencesDialog({ open, onOpenChange }: EmailPreferencesD
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
+  const getAuthHeaders = useCallback(async () => {
+    const { data: sessionData } = await supabase.auth.getSession()
+    const token = sessionData.session?.access_token
+
+    const headers: Record<string, string> = {}
+    if (token) {
+      headers.Authorization = `Bearer ${token}`
+    }
+
+    return headers
+  }, [])
+
   const fetchPreferences = useCallback(async () => {
     try {
       setLoading(true)
-      const { data: sessionData } = await supabase.auth.getSession()
-      const token = sessionData.session?.access_token
-      if (!token) return
+      const authHeaders = await getAuthHeaders()
 
       const response = await fetch('/api/email/preferences', {
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'include',
+        headers: authHeaders,
       })
 
       if (response.ok) {
@@ -75,7 +86,7 @@ export function EmailPreferencesDialog({ open, onOpenChange }: EmailPreferencesD
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [getAuthHeaders])
 
   useEffect(() => {
     if (open) {
@@ -89,15 +100,14 @@ export function EmailPreferencesDialog({ open, onOpenChange }: EmailPreferencesD
 
     try {
       setSaving(true)
-      const { data: sessionData } = await supabase.auth.getSession()
-      const token = sessionData.session?.access_token
-      if (!token) return
+      const authHeaders = await getAuthHeaders()
 
       const response = await fetch('/api/email/preferences', {
         method: 'PUT',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
+          ...authHeaders,
         },
         body: JSON.stringify({ [field]: value }),
       })
@@ -112,7 +122,7 @@ export function EmailPreferencesDialog({ open, onOpenChange }: EmailPreferencesD
     } finally {
       setSaving(false)
     }
-  }, [preferences])
+  }, [getAuthHeaders, preferences])
 
   const handleDaysChange = useCallback(async (days: number) => {
     const clamped = Math.max(0, Math.min(14, days))
@@ -120,22 +130,21 @@ export function EmailPreferencesDialog({ open, onOpenChange }: EmailPreferencesD
     setPreferences(updated)
 
     try {
-      const { data: sessionData } = await supabase.auth.getSession()
-      const token = sessionData.session?.access_token
-      if (!token) return
+      const authHeaders = await getAuthHeaders()
 
       await fetch('/api/email/preferences', {
         method: 'PUT',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
+          ...authHeaders,
         },
         body: JSON.stringify({ dias_antelacion_recordatorio: clamped }),
       })
     } catch {
       console.warn('Error guardando días de antelación')
     }
-  }, [preferences])
+  }, [getAuthHeaders, preferences])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

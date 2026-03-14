@@ -57,14 +57,14 @@ async function getEnabledRecipients(
   })
 }
 
-function getSubjectForNotification(data: EmailNotificationData): string {
+export function getSubjectForNotification(data: EmailNotificationData): string {
   switch (data.type) {
     case 'tarea_asignada':
       return `Nueva tarea asignada: ${data.tarea_titulo}`
     case 'tarea_estado_cambio':
       return `Tarea actualizada: ${data.tarea_titulo}`
     case 'tarea_vencimiento_proximo':
-      return `Recordatorio: "${data.tarea_titulo}" vence ${data.dias_restantes === 0 ? 'hoy' : `en ${data.dias_restantes} día${data.dias_restantes > 1 ? 's' : ''}`}`
+      return `Recordatorio: [${data.proyecto_nombre}] "${data.tarea_titulo}" vence ${data.dias_restantes === 0 ? 'hoy' : `en ${data.dias_restantes} día${data.dias_restantes > 1 ? 's' : ''}`}`
     case 'subtarea_creada':
       return `Nueva subtarea en: ${data.tarea_titulo}`
     case 'handoff_solicitado':

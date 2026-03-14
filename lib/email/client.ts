@@ -19,19 +19,25 @@ export async function sendEmailNotificationFromClient(
 
     const { data: sessionData } = await supabase.auth.getSession()
     const token = sessionData.session?.access_token
-    if (!token) return
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    }
+    if (token) {
+      headers.Authorization = `Bearer ${token}`
+    }
 
-    // Fire and forget — no await en el caller
-    fetch('/api/email/send', {
+    const response = await fetch('/api/email/send', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
+      credentials: 'include',
+      keepalive: true,
+      headers,
       body: JSON.stringify({ type, recipients, data }),
-    }).catch((err) => {
-      console.warn('Error enviando notificación por email:', err)
     })
+
+    if (!response.ok) {
+      const errorBody = await response.text()
+      console.warn('Error enviando notificación por email:', response.status, errorBody)
+    }
   } catch (err) {
     console.warn('Error preparando notificación por email:', err)
   }
