@@ -1,10 +1,12 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import {
   AlertTriangle,
   FolderKanban,
   Loader2,
+  Mail,
   Plus,
   Redo2,
   RefreshCcw,
@@ -44,6 +46,7 @@ import type {
   ProyectoTarea,
   TipoProyectoTarea,
 } from '@/lib/types'
+import { EmailPreferencesDialog } from '@/components/aile/email-preferences-dialog'
 
 const COLLAPSED_PROJECTS_STORAGE_KEY = 'aile:tareas:collapsed-projects:v1'
 const HISTORY_LIMIT = 30
@@ -79,6 +82,15 @@ export function TareasModulePage() {
   const [taskAssignee, setTaskAssignee] = useState('')
   const [taskDirection, setTaskDirection] = useState<DireccionBase | ''>('')
   const [collapsedProjectIds, setCollapsedProjectIds] = useState<string[]>([])
+  const searchParams = useSearchParams()
+  const [emailPrefsOpen, setEmailPrefsOpen] = useState(false)
+
+  // Abrir preferencias de email desde URL (footer de emails)
+  useEffect(() => {
+    if (searchParams.get('preferencias_email') === '1') {
+      setEmailPrefsOpen(true)
+    }
+  }, [searchParams])
   const [preferencesLoaded, setPreferencesLoaded] = useState(false)
   const [undoStack, setUndoStack] = useState<HistoryEntry[]>([])
   const [redoStack, setRedoStack] = useState<HistoryEntry[]>([])
@@ -505,6 +517,10 @@ export function TareasModulePage() {
               <RefreshCcw className="mr-1.5 h-4 w-4" />
               Refrescar
             </Button>
+            <Button variant="outline" onClick={() => setEmailPrefsOpen(true)}>
+              <Mail className="mr-1.5 h-4 w-4" />
+              Emails
+            </Button>
           </div>
         </div>
       </div>
@@ -810,6 +826,8 @@ export function TareasModulePage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <EmailPreferencesDialog open={emailPrefsOpen} onOpenChange={setEmailPrefsOpen} />
     </div>
   )
 }
