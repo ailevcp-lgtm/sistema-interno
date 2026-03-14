@@ -50,6 +50,7 @@ import { cn } from '@/lib/utils'
 import type {
   DireccionBase,
   EstadoTareaKanban,
+  PrioridadTarea,
   SubtareaProyecto,
   TareaProyecto,
   TipoProyectoTarea,
@@ -140,6 +141,41 @@ function statusMarker(status: EstadoTareaKanban) {
 }
 
 const STATUS_OPTIONS: EstadoTareaKanban[] = ['pendiente', 'en_progreso', 'en_revision', 'completada']
+const PRIORITY_OPTIONS: PrioridadTarea[] = [1, 2, 3, 4]
+
+function priorityLabel(priority: PrioridadTarea) {
+  return `P${priority}`
+}
+
+function priorityDescription(priority: PrioridadTarea) {
+  switch (priority) {
+    case 1:
+      return 'Crítica'
+    case 2:
+      return 'Alta'
+    case 3:
+      return 'Media'
+    case 4:
+      return 'Baja'
+    default:
+      return ''
+  }
+}
+
+function priorityBadge(priority: PrioridadTarea) {
+  switch (priority) {
+    case 1:
+      return 'bg-rose-100 text-rose-700 border-rose-200'
+    case 2:
+      return 'bg-orange-100 text-orange-700 border-orange-200'
+    case 3:
+      return 'bg-sky-100 text-sky-700 border-sky-200'
+    case 4:
+      return 'bg-slate-100 text-slate-700 border-slate-200'
+    default:
+      return 'bg-slate-100 text-slate-700 border-slate-200'
+  }
+}
 
 function workflowLabel(value?: string | null) {
   const normalized = (value || '').trim()
@@ -239,6 +275,7 @@ export function TareasTaskCard({
   const [editTitle, setEditTitle] = useState(task.titulo)
   const [editDescription, setEditDescription] = useState(task.descripcion || '')
   const [editStatus, setEditStatus] = useState<EstadoTareaKanban>(task.estado)
+  const [editPriority, setEditPriority] = useState<PrioridadTarea>(task.prioridad || 3)
   const [editDueDate, setEditDueDate] = useState(task.fecha_limite || '')
   const [editDirectionResponsible, setEditDirectionResponsible] = useState<DireccionBase | ''>(
     task.direccion_responsable || projectDirection || ''
@@ -264,6 +301,7 @@ export function TareasTaskCard({
     setEditTitle(task.titulo)
     setEditDescription(task.descripcion || '')
     setEditStatus(task.estado)
+    setEditPriority(task.prioridad || 3)
     setEditDueDate(task.fecha_limite || '')
     setEditDirectionResponsible(task.direccion_responsable || projectDirection || '')
     setSelectedAssignee(task.asignado_usuario_id || '')
@@ -310,6 +348,7 @@ export function TareasTaskCard({
 
   const assignee = task.asignado_usuario_id ? userById.get(task.asignado_usuario_id) : undefined
   const assigneeName = assignee ? `${assignee.nombre} ${assignee.apellido}`.trim() : 'Sin asignar'
+  const taskPriority = task.prioridad || 3
   const backendWorkflowLabel = workflowLabel(task.estado_backend)
   const dueDate = parseDateOnly(task.fecha_limite)
   const dueDateLabel = formatDueDate(task.fecha_limite)
@@ -361,6 +400,7 @@ export function TareasTaskCard({
       titulo: canManageTask ? editTitle.trim() : undefined,
       descripcion: editDescription.trim() || null,
       estado: editStatus,
+      prioridad: canManageTask ? editPriority : undefined,
       fecha_limite: editDueDate || null,
       direccion_responsable: canManageTask && projectType === 'institucional'
         ? (editDirectionResponsible || null)
@@ -489,23 +529,28 @@ export function TareasTaskCard({
                   </div>
                 )}
 
-                {isExpanded ? (
-                  dueDate && dueDateLabel && dueDateMeta && (
-                    <div className={cn(
-                      'inline-flex max-w-full items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-semibold',
-                      dueDateMeta.tone
-                    )}>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <Badge className={cn('rounded-full border text-[11px]', priorityBadge(taskPriority))}>
+                    {priorityLabel(taskPriority)}
+                  </Badge>
+                  {isExpanded ? (
+                    dueDate && dueDateLabel && dueDateMeta && (
+                      <div className={cn(
+                        'inline-flex max-w-full items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-semibold',
+                        dueDateMeta.tone
+                      )}>
+                        <CalendarClock className="h-3.5 w-3.5 shrink-0" />
+                        <span className="whitespace-nowrap">{dueDateLabel}</span>
+                        <span className="whitespace-nowrap opacity-80">· {dueDateMeta.label}</span>
+                      </div>
+                    )
+                  ) : (
+                    <div className="inline-flex items-center gap-1.5 text-[12px] text-slate-600">
                       <CalendarClock className="h-3.5 w-3.5 shrink-0" />
-                      <span className="whitespace-nowrap">{dueDateLabel}</span>
-                      <span className="whitespace-nowrap opacity-80">· {dueDateMeta.label}</span>
+                      <span className="font-medium">{dueDateCompactLabel}</span>
                     </div>
-                  )
-                ) : (
-                  <div className="inline-flex items-center gap-1.5 text-[12px] text-slate-600">
-                    <CalendarClock className="h-3.5 w-3.5 shrink-0" />
-                    <span className="font-medium">{dueDateCompactLabel}</span>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
 
               <Button
@@ -609,7 +654,7 @@ export function TareasTaskCard({
                         variant="ghost"
                         size="sm"
                         className="h-8 rounded-full px-3 text-[11px] text-slate-700 hover:bg-slate-100"
-                        onClick={() => setOpenEdit(true)}
+                        onClick={openEditDialog}
                       >
                         <Pencil className="h-3.5 w-3.5" />
                         Editar
@@ -733,7 +778,7 @@ export function TareasTaskCard({
                 placeholder="Incluye contexto, links, referencias y cualquier dato útil para la tarea."
               />
             </div>
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-3 sm:grid-cols-3">
               <div className="space-y-1.5">
                 <Label>Estado</Label>
                 <Select
@@ -747,6 +792,25 @@ export function TareasTaskCard({
                     {STATUS_OPTIONS.map((status) => (
                       <SelectItem key={status} value={status}>
                         {statusLabel(status)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Prioridad</Label>
+                <Select
+                  value={String(editPriority)}
+                  onValueChange={(value) => setEditPriority(Number(value) as PrioridadTarea)}
+                  disabled={!canManageTask}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PRIORITY_OPTIONS.map((priority) => (
+                      <SelectItem key={priority} value={String(priority)}>
+                        {priorityLabel(priority)} · {priorityDescription(priority)}
                       </SelectItem>
                     ))}
                   </SelectContent>

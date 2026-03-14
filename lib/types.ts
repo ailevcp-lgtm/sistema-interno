@@ -139,6 +139,7 @@ export interface TareaVencimientoCalendario {
 
 export type TipoProyectoTarea = 'institucional' | 'interno_direccion'
 export type DireccionBase = 'CEA' | 'Finanzas' | 'Recursos Humanos' | 'Comunicación'
+export type PrioridadTarea = 1 | 2 | 3 | 4
 export type EstadoProyectoTarea =
   | 'borrador'
   | 'en_ejecucion'
@@ -182,7 +183,7 @@ export interface TareaProyecto {
   descripcion?: string | null
   estado: EstadoTareaKanban
   estado_backend?: EstadoTareaWorkflow
-  prioridad?: 'baja' | 'media' | 'alta' | 'critica' | null
+  prioridad?: PrioridadTarea | null
   orden?: number | null
   fecha_limite?: string | null
   direccion_responsable_id?: string | null

@@ -15,15 +15,20 @@ const COLORS = {
   destructive: '#dc2662',     // --destructive
 }
 
-function formatPriority(prioridad?: string | null): string {
+function formatPriority(prioridad?: string | number | null): string {
   if (!prioridad) return ''
+  const normalized = String(prioridad).trim().toUpperCase()
   const map: Record<string, string> = {
-    baja: '🟢 Baja',
-    media: '🟡 Media',
-    alta: '🟠 Alta',
-    critica: '🔴 Crítica',
+    '1': 'P1',
+    P1: 'P1',
+    '2': 'P2',
+    P2: 'P2',
+    '3': 'P3',
+    P3: 'P3',
+    '4': 'P4',
+    P4: 'P4',
   }
-  return map[prioridad] || prioridad
+  return map[normalized] || String(prioridad)
 }
 
 function formatDate(dateStr?: string | null): string {

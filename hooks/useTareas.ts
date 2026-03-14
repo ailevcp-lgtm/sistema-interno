@@ -12,6 +12,7 @@ import type {
   EstadoProyectoTarea,
   EstadoTareaKanban,
   EstadoTareaWorkflow,
+  PrioridadTarea,
   ProyectoTarea,
   Rol,
   SubtareaProyecto,
@@ -116,6 +117,7 @@ export interface CrearTareaPayload {
   titulo: string
   descripcion?: string
   estado?: EstadoTareaKanban
+  prioridad?: PrioridadTarea
   fecha_limite?: string | null
   direccion_responsable?: DireccionBase | null
   asignado_usuario_id?: string | null
@@ -135,6 +137,7 @@ export interface ActualizarTareaPayload {
   titulo?: string
   descripcion?: string | null
   estado?: EstadoTareaKanban
+  prioridad?: PrioridadTarea
   fecha_limite?: string | null
   direccion_responsable?: DireccionBase | null
 }
@@ -356,12 +359,17 @@ function toBackendState(kanbanState: EstadoTareaKanban): EstadoTareaWorkflow {
   }
 }
 
+function normalizePriority(priority?: number | null): PrioridadTarea {
+  if (priority == null || !Number.isFinite(priority)) return 3
+  if (priority <= 1) return 1
+  if (priority === 2) return 2
+  if (priority === 3) return 3
+  return 4
+}
+
 function mapPriority(priority?: number | null): TareaProyecto['prioridad'] {
   if (priority == null) return null
-  if (priority <= 1) return 'critica'
-  if (priority === 2) return 'alta'
-  if (priority === 3) return 'media'
-  return 'baja'
+  return normalizePriority(priority)
 }
 
 function roleIsCoreManager(rol: Rol) {
@@ -419,6 +427,10 @@ export function useTareas() {
 
     for (const [key, value] of map.entries()) {
       value.sort((a, b) => {
+        const leftPriority = normalizePriority(a.prioridad)
+        const rightPriority = normalizePriority(b.prioridad)
+        if (leftPriority !== rightPriority) return leftPriority - rightPriority
+
         const left = a.orden ?? 0
         const right = b.orden ?? 0
         if (left !== right) return left - right
@@ -1327,6 +1339,7 @@ export function useTareas() {
       titulo: payload.titulo,
       descripcion: payload.descripcion || null,
       estado: toBackendState(payload.estado || 'pendiente'),
+      prioridad: normalizePriority(payload.prioridad),
       fecha_vencimiento: payload.fecha_limite || null,
       direccion_responsable: payload.direccion_responsable || null,
       direccion_responsable_codigo: payload.direccion_responsable
@@ -1353,7 +1366,7 @@ export function useTareas() {
           tarea_titulo: payload.titulo,
           proyecto_nombre: project.nombre,
           asignado_por_nombre: currentUserName,
-          prioridad: null,
+          prioridad: normalizePriority(payload.prioridad),
           fecha_limite: payload.fecha_limite || null,
           descripcion: payload.descripcion || null,
         },
@@ -1628,6 +1641,10 @@ export function useTareas() {
 
     if (canManage && payload.titulo !== undefined) {
       rpcPayload.titulo = payload.titulo
+    }
+
+    if (canManage && payload.prioridad !== undefined) {
+      rpcPayload.prioridad = normalizePriority(payload.prioridad)
     }
 
     if (canManage && Object.prototype.hasOwnProperty.call(payload, 'direccion_responsable')) {

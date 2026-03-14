@@ -44,6 +44,7 @@ import type {
   AccesoProyectoTarea,
   DireccionBase,
   EstadoTareaKanban,
+  PrioridadTarea,
   ProyectoTarea,
   TipoProyectoTarea,
 } from '@/lib/types'
@@ -83,6 +84,7 @@ export function TareasModulePage() {
   const [taskTitle, setTaskTitle] = useState('')
   const [taskDescription, setTaskDescription] = useState('')
   const [taskStatus, setTaskStatus] = useState<EstadoTareaKanban>('pendiente')
+  const [taskPriority, setTaskPriority] = useState<PrioridadTarea>(3)
   const [taskDueDate, setTaskDueDate] = useState('')
   const [taskAssignee, setTaskAssignee] = useState('')
   const [taskDirection, setTaskDirection] = useState<DireccionBase | ''>('')
@@ -237,6 +239,7 @@ export function TareasModulePage() {
     setTaskTitle('')
     setTaskDescription('')
     setTaskStatus('pendiente')
+    setTaskPriority(3)
     setTaskDueDate('')
     setTaskAssignee('')
     setTaskDirection('')
@@ -333,6 +336,7 @@ export function TareasModulePage() {
       titulo: task.titulo,
       descripcion: task.descripcion || undefined,
       estado: task.estado,
+      prioridad: task.prioridad || 3,
       fecha_limite: task.fecha_limite || null,
       direccion_responsable: task.direccion_responsable || null,
       asignado_usuario_id: task.asignado_usuario_id || null,
@@ -390,6 +394,7 @@ export function TareasModulePage() {
       titulo: taskTitle.trim(),
       descripcion: taskDescription.trim(),
       estado: taskStatus,
+      prioridad: taskPriority,
       fecha_limite: taskDueDate || null,
       direccion_responsable: directionForTask,
       asignado_usuario_id: selectedUser?.usuario_id || null,
@@ -763,7 +768,7 @@ export function TareasModulePage() {
                 placeholder="Incluye contexto, links, referencias y cualquier información útil."
               />
             </div>
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-4">
               <div className="space-y-1.5">
                 <Label>Estado</Label>
                 <Select
@@ -779,6 +784,23 @@ export function TareasModulePage() {
                         {column.title}
                       </SelectItem>
                     ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Prioridad</Label>
+                <Select
+                  value={String(taskPriority)}
+                  onValueChange={(value) => setTaskPriority(Number(value) as PrioridadTarea)}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">P1</SelectItem>
+                    <SelectItem value="2">P2</SelectItem>
+                    <SelectItem value="3">P3</SelectItem>
+                    <SelectItem value="4">P4</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

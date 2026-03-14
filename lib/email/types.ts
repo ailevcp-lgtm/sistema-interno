@@ -1,4 +1,5 @@
 // Tipos para el sistema de notificaciones por email
+import type { PrioridadTarea } from '@/lib/types'
 
 export type EmailNotificationType =
   // Tareas
@@ -39,7 +40,7 @@ export interface TareaAsignadaData {
   tarea_titulo: string
   proyecto_nombre: string
   asignado_por_nombre: string
-  prioridad?: string | null
+  prioridad?: PrioridadTarea | null
   fecha_limite?: string | null
   descripcion?: string | null
 }
