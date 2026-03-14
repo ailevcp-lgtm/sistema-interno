@@ -700,12 +700,15 @@ export function useTareas() {
     return socio ? `${socio.nombre} ${socio.apellido}` : user.email
   }, [user, socioById])
 
-  const buildRecipient = useCallback((socioId: string | null | undefined): EmailRecipient | null => {
+  const buildRecipient = useCallback((
+    socioId: string | null | undefined,
+    options?: { includeCurrentUser?: boolean }
+  ): EmailRecipient | null => {
     if (!socioId) return null
     const socio = socioById.get(socioId)
     if (!socio?.email) return null
     // No enviar email al usuario actual
-    if (user && socio.socio_id === user.socio_id) return null
+    if (!options?.includeCurrentUser && user && socio.socio_id === user.socio_id) return null
     return {
       socio_id: socio.socio_id,
       email: socio.email,
@@ -1351,7 +1354,7 @@ export function useTareas() {
           fecha_limite: payload.fecha_limite || null,
           descripcion: payload.descripcion || null,
         },
-        [buildRecipient(assigneeSocioId)]
+        [buildRecipient(assigneeSocioId, { includeCurrentUser: true })]
       )
     }
 
@@ -1462,7 +1465,7 @@ export function useTareas() {
         fecha_limite: task.fecha_limite,
         descripcion: task.descripcion,
       },
-      [buildRecipient(targetSocioId)]
+      [buildRecipient(targetSocioId, { includeCurrentUser: true })]
     )
 
     return result
