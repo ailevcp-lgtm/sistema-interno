@@ -770,10 +770,10 @@ export function TareasTaskCard({
                   disabled={!canManageTask}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Sin dirección" />
+                    <SelectValue placeholder="Sin dirección / Comisión Directiva" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="__none__">Sin dirección</SelectItem>
+                    <SelectItem value="__none__">Sin dirección / Comisión Directiva</SelectItem>
                     {directions.map((direction) => (
                       <SelectItem key={direction} value={direction}>
                         {direction}

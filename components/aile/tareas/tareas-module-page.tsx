@@ -41,6 +41,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import type {
+  AccesoProyectoTarea,
   DireccionBase,
   EstadoTareaKanban,
   ProyectoTarea,
@@ -65,6 +66,10 @@ function toErrorMessage(error: unknown): string {
 export function TareasModulePage() {
   const { user } = useAuth()
   const tareas = useTareas()
+  const projectAccess = tareas.projectAccess
+  const directions = tareas.directions
+  const canCreateInstitutionalProject = tareas.canCreateInstitutionalProject
+  const canCreateProjectInDirection = tareas.canCreateProjectInDirection
   const [activeTab, setActiveTab] = useState<'institucional' | 'direcciones'>('institucional')
   const [selectedDirection, setSelectedDirection] = useState<DireccionBase>('CEA')
 
@@ -137,12 +142,20 @@ export function TareasModulePage() {
   )
 
   const accessByProject = useMemo(() => {
-    const map = new Map<string, ReturnType<typeof tareas.projectAccess>>()
+    const map = new Map<string, AccesoProyectoTarea>()
     for (const project of activeProjects) {
-      map.set(project.id, tareas.projectAccess(project))
+      map.set(project.id, projectAccess(project))
     }
     return map
-  }, [activeProjects, tareas.projectAccess])
+  }, [activeProjects, projectAccess])
+
+  const taskProjectAccess = projectForTask
+    ? accessByProject.get(projectForTask.id) || projectAccess(projectForTask)
+    : null
+
+  const canCreateInstitutionalTaskWithoutDirection = projectForTask?.tipo === 'institucional'
+    ? Boolean(taskProjectAccess?.canManage)
+    : true
 
   const directionProjects = useMemo(() => {
     const internalProjects = activeProjects.filter(
@@ -163,10 +176,10 @@ export function TareasModulePage() {
 
   const canCreateAnyProject = useMemo(
     () => (
-      tareas.canCreateInstitutionalProject()
-      || tareas.directions.some((direction) => tareas.canCreateProjectInDirection(direction))
+      canCreateInstitutionalProject()
+      || directions.some((direction) => canCreateProjectInDirection(direction))
     ),
-    [tareas.canCreateInstitutionalProject, tareas.canCreateProjectInDirection, tareas.directions]
+    [canCreateInstitutionalProject, canCreateProjectInDirection, directions]
   )
 
   const assignedTasksCount = useMemo(() => {
@@ -796,11 +809,17 @@ export function TareasModulePage() {
             {projectForTask?.tipo === 'institucional' && (
               <div className="space-y-1.5">
                 <Label>Dirección responsable</Label>
-                <Select value={taskDirection} onValueChange={(value) => setTaskDirection(value as DireccionBase)}>
+                <Select
+                  value={taskDirection}
+                  onValueChange={(value) => setTaskDirection(value === '__none__' ? '' : value as DireccionBase)}
+                >
                   <SelectTrigger>
-                    <SelectValue placeholder="Seleccionar dirección" />
+                    <SelectValue placeholder="Sin dirección / Comisión Directiva" />
                   </SelectTrigger>
                   <SelectContent>
+                    {canCreateInstitutionalTaskWithoutDirection && (
+                      <SelectItem value="__none__">Sin dirección / Comisión Directiva</SelectItem>
+                    )}
                     {tareas.directions.map((direction) => (
                       <SelectItem key={direction} value={direction}>
                         {direction}
@@ -808,6 +827,11 @@ export function TareasModulePage() {
                     ))}
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-muted-foreground">
+                  {canCreateInstitutionalTaskWithoutDirection
+                    ? 'Opcional. Déjala vacía para tareas generales o de Comisión Directiva. Esas tareas se verán en Proyectos Institucionales.'
+                    : 'Selecciona una dirección para crear esta tarea institucional desde tu espacio de gestión.'}
+                </p>
               </div>
             )}
           </div>
@@ -818,7 +842,7 @@ export function TareasModulePage() {
               disabled={
                 !taskTitle.trim()
                 || Boolean(tareas.mutatingAction)
-                || (projectForTask?.tipo === 'institucional' && !taskDirection)
+                || (projectForTask?.tipo === 'institucional' && !taskDirection && !canCreateInstitutionalTaskWithoutDirection)
               }
             >
               Crear tarea

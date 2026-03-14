@@ -1302,17 +1302,20 @@ export function useTareas() {
 
     const targetDirection = payload.direccion_responsable
       || (project.tipo === 'interno_direccion' ? (project.direccion || null) : null)
+    const canManageCurrentProject = canManageProject(project)
 
     if (project.tipo === 'institucional') {
       if (!targetDirection) {
-        throwPermissionError('Debes indicar la dirección responsable de la tarea.')
+        if (!canManageCurrentProject) {
+          throwPermissionError('Debes indicar la dirección responsable de la tarea.')
+        }
       }
 
       const scopedDirection = targetDirection as DireccionBase
-      if (!canManageProject(project) && !hasDirectionScope(scopedDirection)) {
+      if (scopedDirection && !canManageCurrentProject && !hasDirectionScope(scopedDirection)) {
         throwPermissionError('No tienes permisos para crear tareas en esa dirección.')
       }
-    } else if (!canManageProject(project)) {
+    } else if (!canManageCurrentProject) {
       throwPermissionError('No tienes permisos para crear tareas en este proyecto.')
     }
 
