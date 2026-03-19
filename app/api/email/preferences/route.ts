@@ -76,6 +76,7 @@ const ALLOWED_FIELDS = [
   'calendario_planificacion_definitiva',
   'resolucion_nueva',
   'decreto_nuevo',
+  'balance_nuevo',
 ]
 
 export async function GET(request: NextRequest) {
@@ -116,6 +117,7 @@ export async function GET(request: NextRequest) {
         calendario_planificacion_definitiva: true,
         resolucion_nueva: true,
         decreto_nuevo: true,
+        balance_nuevo: true,
       }))
     }
 

@@ -89,6 +89,8 @@ export function getSubjectForNotification(data: EmailNotificationData): string {
       return `Nueva resolución CD: Res. ${data.resolucion_numero}/${data.resolucion_anio} - ${data.resolucion_titulo}`
     case 'decreto_nuevo':
       return `Nuevo decreto: Dec. ${data.decreto_numero}/${data.decreto_anio} - ${data.decreto_titulo}`
+    case 'balance_nuevo':
+      return `Nuevo balance disponible: ${data.balance_periodo}`
   }
 }
 

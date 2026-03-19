@@ -17,7 +17,6 @@ import { Mail, Loader2 } from 'lucide-react'
 import {
   NOTIFICATION_CATEGORIES,
   NOTIFICATION_LABELS,
-  type EmailNotificationType,
 } from '@/lib/email/types'
 
 interface EmailPreferences {
@@ -43,6 +42,7 @@ const DEFAULT_PREFERENCES: EmailPreferences = {
   calendario_planificacion_definitiva: true,
   resolucion_nueva: true,
   decreto_nuevo: true,
+  balance_nuevo: true,
 }
 
 interface EmailPreferencesDialogProps {

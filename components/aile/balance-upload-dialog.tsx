@@ -1,13 +1,13 @@
 "use client"
 
-import { type ChangeEvent, type FormEvent, useId, useRef, useState } from "react"
+import { type ChangeEvent, type FormEvent, useEffect, useId, useRef, useState } from "react"
 import { Loader2, Upload, FileText, X } from "lucide-react"
 import { toast } from "sonner"
 
 import { useAuth } from "@/hooks/useAuth"
 import { useDocumentos } from "@/hooks/useDocumentos"
 import { supabase } from "@/lib/supabase"
-import type { EstadoBalance, TipoBalance } from "@/lib/types"
+import type { Balance, EstadoBalance, TipoBalance } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -30,7 +30,8 @@ import {
 interface BalanceUploadDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onUploaded?: () => void
+  onSaved?: (balance: Balance) => void
+  initialBalance?: Balance | null
 }
 
 const BALANCE_TYPE_OPTIONS: Array<{ value: TipoBalance; label: string }> = [
@@ -58,15 +59,38 @@ function sanitizeFileName(value: string) {
     .replace(/^-+|-+$/g, "")
 }
 
+export function getDocumentStoragePathFromPublicUrl(
+  publicUrl: string | null | undefined,
+  bucketName: string = "documentos"
+) {
+  if (!publicUrl) return null
+
+  try {
+    const url = new URL(publicUrl)
+    const marker = `/storage/v1/object/public/${bucketName}/`
+    const markerIndex = url.pathname.indexOf(marker)
+
+    if (markerIndex === -1) {
+      return null
+    }
+
+    return decodeURIComponent(url.pathname.slice(markerIndex + marker.length))
+  } catch {
+    return null
+  }
+}
+
 export function BalanceUploadDialog({
   open,
   onOpenChange,
-  onUploaded,
+  onSaved,
+  initialBalance,
 }: BalanceUploadDialogProps) {
   const uploadInputId = useId()
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const { createBalance } = useDocumentos()
+  const { createBalance, updateBalance } = useDocumentos()
   const { user } = useAuth()
+  const isEditing = Boolean(initialBalance)
 
   const [periodo, setPeriodo] = useState(getDefaultPeriodo)
   const [tipo, setTipo] = useState<TipoBalance>("anual")
@@ -75,14 +99,25 @@ export function BalanceUploadDialog({
   const [submitting, setSubmitting] = useState(false)
 
   const resetForm = () => {
-    setPeriodo(getDefaultPeriodo())
-    setTipo("anual")
-    setEstado("aprobado_asamblea")
+    setPeriodo(initialBalance?.periodo || getDefaultPeriodo())
+    setTipo(initialBalance?.tipo || "anual")
+    setEstado(initialBalance?.estado || "aprobado_asamblea")
     setSelectedFile(null)
     if (fileInputRef.current) {
       fileInputRef.current.value = ""
     }
   }
+
+  useEffect(() => {
+    if (!open) return
+    setPeriodo(initialBalance?.periodo || getDefaultPeriodo())
+    setTipo(initialBalance?.tipo || "anual")
+    setEstado(initialBalance?.estado || "aprobado_asamblea")
+    setSelectedFile(null)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ""
+    }
+  }, [initialBalance, open])
 
   const handleDialogChange = (nextOpen: boolean) => {
     if (!nextOpen && !submitting) {
@@ -118,7 +153,7 @@ export function BalanceUploadDialog({
       return
     }
 
-    if (!selectedFile) {
+    if (!selectedFile && !initialBalance?.archivo_url) {
       toast.error("Seleccioná un PDF para subir")
       return
     }
@@ -127,43 +162,71 @@ export function BalanceUploadDialog({
     let uploadedPath: string | null = null
 
     try {
-      const fileBaseName = sanitizeFileName(
-        normalizedPeriodo || selectedFile.name.replace(/\.pdf$/i, "")
-      ) || "balance"
-      const filePath = `balances/${new Date().getFullYear()}/${Date.now()}-${fileBaseName}.pdf`
+      const previousFilePath = getDocumentStoragePathFromPublicUrl(initialBalance?.archivo_url)
+      let nextFileUrl = initialBalance?.archivo_url || undefined
 
-      const { error: uploadError } = await supabase.storage
-        .from("documentos")
-        .upload(filePath, selectedFile, {
-          contentType: "application/pdf",
-          upsert: false,
-        })
+      if (selectedFile) {
+        const fileBaseName = sanitizeFileName(
+          normalizedPeriodo || selectedFile.name.replace(/\.pdf$/i, "")
+        ) || "balance"
+        const filePath = `balances/${new Date().getFullYear()}/${Date.now()}-${fileBaseName}.pdf`
 
-      if (uploadError) {
-        throw uploadError
+        const { error: uploadError } = await supabase.storage
+          .from("documentos")
+          .upload(filePath, selectedFile, {
+            contentType: "application/pdf",
+            upsert: false,
+          })
+
+        if (uploadError) {
+          throw uploadError
+        }
+
+        uploadedPath = filePath
+
+        const { data: publicUrlData } = supabase.storage
+          .from("documentos")
+          .getPublicUrl(filePath)
+
+        nextFileUrl = publicUrlData.publicUrl
       }
 
-      uploadedPath = filePath
+      let savedBalance: Balance
 
-      const { data: publicUrlData } = supabase.storage
-        .from("documentos")
-        .getPublicUrl(filePath)
+      if (initialBalance) {
+        savedBalance = await updateBalance(initialBalance.id, {
+          periodo: normalizedPeriodo,
+          tipo,
+          estado,
+          archivo_url: nextFileUrl,
+        })
+      } else {
+        savedBalance = await createBalance({
+          periodo: normalizedPeriodo,
+          tipo,
+          estado,
+          archivo_url: nextFileUrl,
+          total_ingresos: 0,
+          total_egresos: 0,
+          aprobado_por: user?.id || undefined,
+        })
+      }
 
-      await createBalance({
-        periodo: normalizedPeriodo,
-        tipo,
-        estado,
-        archivo_url: publicUrlData.publicUrl,
-        total_ingresos: 0,
-        total_egresos: 0,
-        aprobado_por: user?.id || undefined,
-      })
+      if (selectedFile && previousFilePath && previousFilePath !== uploadedPath) {
+        const { error: cleanupPreviousError } = await supabase.storage
+          .from("documentos")
+          .remove([previousFilePath])
+
+        if (cleanupPreviousError) {
+          console.warn("Error cleaning previous balance file:", cleanupPreviousError)
+        }
+      }
 
       resetForm()
       onOpenChange(false)
-      onUploaded?.()
+      onSaved?.(savedBalance)
     } catch (error) {
-      console.error("Error creating balance:", error)
+      console.error("Error saving balance:", error)
 
       if (uploadedPath) {
         const { error: cleanupError } = await supabase.storage
@@ -175,7 +238,7 @@ export function BalanceUploadDialog({
         }
       }
 
-      toast.error("No se pudo subir el balance")
+      toast.error(isEditing ? "No se pudo actualizar el balance" : "No se pudo subir el balance")
     } finally {
       setSubmitting(false)
     }
@@ -185,9 +248,11 @@ export function BalanceUploadDialog({
     <Dialog open={open} onOpenChange={handleDialogChange}>
       <DialogContent className="sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>Subir balance</DialogTitle>
+          <DialogTitle>{isEditing ? "Editar balance" : "Subir balance"}</DialogTitle>
           <DialogDescription>
-            Cargá un PDF institucional para publicarlo en Documentos y notificar al resto del sistema.
+            {isEditing
+              ? "Actualizá el período, el estado o reemplazá el PDF publicado."
+              : "Cargá un PDF institucional para publicarlo en Documentos y notificar al resto del sistema."}
           </DialogDescription>
         </DialogHeader>
 
@@ -265,7 +330,7 @@ export function BalanceUploadDialog({
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium text-foreground">{selectedFile.name}</p>
                   <p className="text-xs text-muted-foreground">
-                    {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
+                    Nuevo PDF • {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
                   </p>
                 </div>
                 <Button
@@ -283,6 +348,27 @@ export function BalanceUploadDialog({
                 >
                   <X className="h-4 w-4" />
                   <span className="sr-only">Quitar archivo</span>
+                </Button>
+              </div>
+            ) : isEditing && initialBalance?.archivo_url ? (
+              <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/40 p-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-background border border-border">
+                  <FileText className="h-5 w-5 text-[#6314a7]" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-foreground">PDF actual cargado</p>
+                  <p className="text-xs text-muted-foreground">
+                    Se mantendrá hasta que selecciones un archivo nuevo.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="shrink-0 bg-transparent"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={submitting}
+                >
+                  Reemplazar PDF
                 </Button>
               </div>
             ) : (
@@ -314,7 +400,7 @@ export function BalanceUploadDialog({
             </Button>
             <Button type="submit" disabled={submitting}>
               {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
-              Publicar balance
+              {isEditing ? "Guardar cambios" : "Publicar balance"}
             </Button>
           </DialogFooter>
         </form>

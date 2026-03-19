@@ -19,6 +19,7 @@ export type EmailNotificationType =
   // Resoluciones y Decretos
   | 'resolucion_nueva'
   | 'decreto_nuevo'
+  | 'balance_nuevo'
 
 export interface EmailRecipient {
   socio_id: string
@@ -162,6 +163,13 @@ export interface DecretoNuevoData {
   creado_por_nombre: string
 }
 
+export interface BalanceNuevoData {
+  type: 'balance_nuevo'
+  balance_periodo: string
+  balance_fecha_publicacion: string
+  creado_por_nombre: string
+}
+
 // ── Union type ──────────────────────────────────────────
 
 export type EmailNotificationData =
@@ -179,6 +187,7 @@ export type EmailNotificationData =
   | CalendarioPlanificacionDefinitivaData
   | ResolucionNuevaData
   | DecretoNuevoData
+  | BalanceNuevoData
 
 // Mapeo de tipo de notificación a columna de preferencia
 export const NOTIFICATION_PREFERENCE_MAP: Record<EmailNotificationType, string> = {
@@ -196,6 +205,7 @@ export const NOTIFICATION_PREFERENCE_MAP: Record<EmailNotificationType, string> 
   calendario_planificacion_definitiva: 'calendario_planificacion_definitiva',
   resolucion_nueva: 'resolucion_nueva',
   decreto_nuevo: 'decreto_nuevo',
+  balance_nuevo: 'balance_nuevo',
 }
 
 export const NOTIFICATION_LABELS: Record<EmailNotificationType, string> = {
@@ -216,6 +226,7 @@ export const NOTIFICATION_LABELS: Record<EmailNotificationType, string> = {
   // Resoluciones y Decretos
   resolucion_nueva: 'Cuando se publica una nueva resolución de CD',
   decreto_nuevo: 'Cuando se publica un nuevo decreto',
+  balance_nuevo: 'Cuando se publica un nuevo balance',
 }
 
 export const NOTIFICATION_CATEGORIES = [
@@ -242,10 +253,11 @@ export const NOTIFICATION_CATEGORIES = [
     ] as EmailNotificationType[],
   },
   {
-    label: 'Resoluciones y Decretos',
+    label: 'Documentos institucionales',
     types: [
       'resolucion_nueva',
       'decreto_nuevo',
+      'balance_nuevo',
     ] as EmailNotificationType[],
   },
 ]

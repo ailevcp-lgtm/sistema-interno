@@ -485,5 +485,24 @@ export function renderEmailHtml(
         preferencesUrl
       )
     }
+
+    case 'balance_nuevo': {
+      const rows = [
+        infoRow('Balance', `<strong>${data.balance_periodo}</strong>`),
+        infoRow('Publicado el', formatDate(data.balance_fecha_publicacion)),
+        infoRow('Publicado por', data.creado_por_nombre),
+      ].join('')
+
+      return baseLayout(
+        'Nuevo balance institucional disponible',
+        `${greeting}
+        <p style="margin:12px 0 0;color:${COLORS.foreground};font-size:14px;">
+          Se ha publicado un nuevo balance en Documentos:
+        </p>
+        ${detailsTable(rows)}
+        ${ctaButton('Ver balance', documentosUrl)}`,
+        preferencesUrl
+      )
+    }
   }
 }

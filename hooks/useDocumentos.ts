@@ -199,7 +199,7 @@ export function useDocumentos() {
             }))
 
         if (rows.length === 0) {
-            return
+            return 0
         }
 
         const { error } = await supabase
@@ -209,7 +209,57 @@ export function useDocumentos() {
         if (error) {
             throw error
         }
+
+        return rows.length
     }, [])
+
+    const notifyBalanceUpload = useCallback(async (
+        balance: Pick<Balance, 'id' | 'periodo' | 'created_at'>,
+        options?: { silentSuccess?: boolean }
+    ) => {
+        try {
+            const socios = await getActiveSocios()
+            const { data: sessionData } = await supabase.auth.getSession()
+            const currentUserId = sessionData.session?.user?.id
+            const currentSocio = socios.find((s) => s.usuario_id === currentUserId)
+            const creatorName = currentSocio ? `${currentSocio.nombre} ${currentSocio.apellido}` : 'Un miembro'
+
+            const sentCount = await createNotificationsForUsuarios(socios, {
+                titulo: 'Nuevo balance disponible',
+                mensaje: `Se subio el balance ${balance.periodo}. Ya podes verlo en Documentos.`,
+                tipo: 'info',
+                link: `/documentos/balances/${balance.id}`,
+            })
+
+            const recipients: EmailRecipient[] = socios
+                .filter((s) => s.usuario_id !== currentUserId && s.email)
+                .map((s) => ({
+                    socio_id: s.id,
+                    email: s.email!,
+                    nombre: s.nombre,
+                    apellido: s.apellido,
+                }))
+
+            await sendEmailNotificationFromClient('balance_nuevo', recipients, {
+                type: 'balance_nuevo',
+                balance_periodo: balance.periodo,
+                balance_fecha_publicacion: balance.created_at,
+                creado_por_nombre: creatorName,
+            })
+
+            if (!options?.silentSuccess) {
+                toast.success(`Notificación enviada a ${sentCount} usuarios`)
+            }
+
+            return sentCount
+        } catch (error) {
+            console.error('Error notifying balance upload:', error)
+            if (!options?.silentSuccess) {
+                toast.error('No se pudo enviar la notificación del balance')
+            }
+            throw error
+        }
+    }, [createNotificationsForUsuarios, getActiveSocios])
 
     const createResolucion = useCallback(async (data: Omit<Resolucion, 'id' | 'created_at'>) => {
         setLoading(true)
@@ -359,22 +409,52 @@ export function useDocumentos() {
         toast.success('Balance creado correctamente')
         const balance = newBalance as Balance
 
-        void (async () => {
-            try {
-                const socios = await getActiveSocios()
-                await createNotificationsForUsuarios(socios, {
-                    titulo: 'Nuevo balance disponible',
-                    mensaje: `Se subio el balance ${balance.periodo}. Ya podes verlo en Documentos.`,
-                    tipo: 'info',
-                    link: `/documentos/balances/${balance.id}`,
-                })
-            } catch (notificationError) {
-                console.warn('Error creando notificaciones de balance:', notificationError)
-            }
-        })()
+        void notifyBalanceUpload(balance, { silentSuccess: true }).catch(() => {
+            toast.error('El balance se subio, pero la notificación falló. Podes enviarla manualmente desde la lista.')
+        })
 
         return balance
-    }, [createNotificationsForUsuarios, getActiveSocios])
+    }, [notifyBalanceUpload])
+
+    const updateBalance = useCallback(async (id: string, data: Partial<Balance>) => {
+        setLoading(true)
+
+        const { data: updatedBalance, error } = await supabase
+            .from('balances')
+            .update(data)
+            .eq('id', id)
+            .select()
+            .single()
+
+        setLoading(false)
+        if (error) {
+            console.error('Error updating balance:', error)
+            toast.error('Error al actualizar balance')
+            throw error
+        }
+
+        toast.success('Balance actualizado')
+        return updatedBalance as Balance
+    }, [])
+
+    const deleteBalance = useCallback(async (id: string) => {
+        setLoading(true)
+
+        const { error } = await supabase
+            .from('balances')
+            .delete()
+            .eq('id', id)
+
+        setLoading(false)
+        if (error) {
+            console.error('Error deleting balance:', error)
+            toast.error('Error al eliminar balance')
+            throw error
+        }
+
+        toast.success('Balance eliminado')
+        return true
+    }, [])
 
     // -- CONFIGURACION --
     const getConfig = useCallback(async (key: string) => {
@@ -424,6 +504,9 @@ export function useDocumentos() {
         getBalances,
         getBalanceById,
         createBalance,
+        updateBalance,
+        deleteBalance,
+        notifyBalanceUpload,
         getConfig,
         updateConfig
     }

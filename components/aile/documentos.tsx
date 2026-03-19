@@ -1,6 +1,6 @@
 "use client"
 
-import { Download, ChevronDown, ChevronRight, BookOpen, Scale, Gavel, BarChart2, Plus, FileText, Upload, Settings, Eye } from "lucide-react"
+import { Download, ChevronDown, ChevronRight, BookOpen, Scale, Gavel, BarChart2, Plus, FileText, Upload, Settings, Eye, Bell, Pencil, Trash2, Loader2 } from "lucide-react"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -13,7 +13,8 @@ import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { useAuth } from "@/hooks/useAuth"
 import { useResumeRefresh } from "@/hooks/useResumeRefresh"
-import { BalanceUploadDialog } from "@/components/aile/balance-upload-dialog"
+import { BalanceUploadDialog, getDocumentStoragePathFromPublicUrl } from "@/components/aile/balance-upload-dialog"
+import { supabase } from "@/lib/supabase"
 import {
   Tooltip,
   TooltipContent,
@@ -62,7 +63,7 @@ export function DocumentosPage() {
   const tabFromUrl = searchParams.get("tab")
   const [activeTab, setActiveTab] = useState<DocTab>("estatuto")
   const [expandedArticle, setExpandedArticle] = useState<string | null>(null)
-  const { getEstatuto, getResoluciones, getBalances, getConfig } = useDocumentos()
+  const { getEstatuto, getResoluciones, getBalances, getConfig, deleteBalance, notifyBalanceUpload } = useDocumentos()
   const { hasPermission } = useAuth()
 
   const [articulos, setArticulos] = useState<ArticuloEstatuto[]>([])
@@ -73,9 +74,14 @@ export function DocumentosPage() {
   const [estatutoPdfUrl, setEstatutoPdfUrl] = useState<string | null>(null)
   const [selectedNorma, setSelectedNorma] = useState<Resolucion | null>(null)
   const [isBalanceUploadOpen, setIsBalanceUploadOpen] = useState(false)
+  const [editingBalance, setEditingBalance] = useState<Balance | null>(null)
+  const [notifyingBalanceId, setNotifyingBalanceId] = useState<string | null>(null)
+  const [deletingBalanceId, setDeletingBalanceId] = useState<string | null>(null)
 
-  // Check if user is admin
-  const isAdmin = hasPermission("documentos", "crear")
+  const canCreateBalance = hasPermission("balances", "crear")
+  const canEditBalance = hasPermission("balances", "editar")
+  const canDeleteBalance = hasPermission("balances", "eliminar")
+  const canNotifyBalance = canCreateBalance || canEditBalance
 
   const loadData = useCallback(async () => {
     try {
@@ -139,6 +145,42 @@ export function DocumentosPage() {
     return `Res. ${String(norma.numero).padStart(3, "0")}/${norma.anio}`
   }
 
+  const handleNotifyBalance = async (balance: Balance) => {
+    try {
+      setNotifyingBalanceId(balance.id)
+      await notifyBalanceUpload(balance)
+    } finally {
+      setNotifyingBalanceId(null)
+    }
+  }
+
+  const handleDeleteBalance = async (balance: Balance) => {
+    if (typeof window !== "undefined") {
+      const confirmed = window.confirm(`¿Eliminar el balance "${balance.periodo}"?`)
+      if (!confirmed) return
+    }
+
+    try {
+      setDeletingBalanceId(balance.id)
+      await deleteBalance(balance.id)
+
+      const storagePath = getDocumentStoragePathFromPublicUrl(balance.archivo_url)
+      if (storagePath) {
+        const { error } = await supabase.storage
+          .from("documentos")
+          .remove([storagePath])
+
+        if (error) {
+          console.warn("Error cleaning deleted balance file:", error)
+        }
+      }
+
+      await loadData()
+    } finally {
+      setDeletingBalanceId(null)
+    }
+  }
+
   return (
     <div className="flex flex-col gap-6">
       {/* Header */}
@@ -147,7 +189,7 @@ export function DocumentosPage() {
           <h1 className="text-xl lg:text-2xl font-bold text-foreground">Documentos</h1>
           <p className="text-sm text-muted-foreground mt-0.5">Estatuto, resoluciones, decretos y balances</p>
         </div>
-        {isAdmin && (
+        {canCreateBalance && (
           <div className="flex gap-2">
             {activeTab === "estatuto" && (
               <Link href="/admin/estatuto">
@@ -166,7 +208,14 @@ export function DocumentosPage() {
               </Link>
             )}
             {activeTab === "balances" && (
-              <Button size="sm" className="gap-2" onClick={() => setIsBalanceUploadOpen(true)}>
+              <Button
+                size="sm"
+                className="gap-2"
+                onClick={() => {
+                  setEditingBalance(null)
+                  setIsBalanceUploadOpen(true)
+                }}
+              >
                 <Upload className="w-4 h-4" />
                 <span className="hidden sm:inline">Subir Balance</span>
               </Button>
@@ -527,7 +576,37 @@ export function DocumentosPage() {
                             </div>
                           </div>
                           {bal.archivo_url && (
-                            <div className="flex items-center gap-2 sm:justify-end">
+                            <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                              {canNotifyBalance && (
+                                <Button
+                                  onClick={() => void handleNotifyBalance(bal)}
+                                  size="sm"
+                                  variant="outline"
+                                  className="gap-1.5 bg-transparent"
+                                  disabled={notifyingBalanceId === bal.id}
+                                >
+                                  {notifyingBalanceId === bal.id ? (
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                  ) : (
+                                    <Bell className="w-4 h-4" />
+                                  )}
+                                  <span className="hidden sm:inline">Notificar</span>
+                                </Button>
+                              )}
+                              {canEditBalance && (
+                                <Button
+                                  onClick={() => {
+                                    setEditingBalance(bal)
+                                    setIsBalanceUploadOpen(true)
+                                  }}
+                                  size="sm"
+                                  variant="outline"
+                                  className="gap-1.5 bg-transparent"
+                                >
+                                  <Pencil className="w-4 h-4" />
+                                  <span className="hidden sm:inline">Editar</span>
+                                </Button>
+                              )}
                               <Button asChild size="sm" variant="outline" className="gap-1.5 bg-transparent">
                                 <Link href={`/documentos/balances/${bal.id}`}>
                                   <Eye className="w-4 h-4" />
@@ -538,6 +617,22 @@ export function DocumentosPage() {
                                 <Download className="w-4 h-4" />
                                 <span className="hidden sm:inline">Descargar</span>
                               </Button>
+                              {canDeleteBalance && (
+                                <Button
+                                  onClick={() => void handleDeleteBalance(bal)}
+                                  size="sm"
+                                  variant="outline"
+                                  className="gap-1.5 bg-transparent"
+                                  disabled={deletingBalanceId === bal.id}
+                                >
+                                  {deletingBalanceId === bal.id ? (
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                  ) : (
+                                    <Trash2 className="w-4 h-4" />
+                                  )}
+                                  <span className="hidden sm:inline">Eliminar</span>
+                                </Button>
+                              )}
                             </div>
                           )}
                         </div>
@@ -553,8 +648,15 @@ export function DocumentosPage() {
 
       <BalanceUploadDialog
         open={isBalanceUploadOpen}
-        onOpenChange={setIsBalanceUploadOpen}
-        onUploaded={() => {
+        onOpenChange={(open) => {
+          setIsBalanceUploadOpen(open)
+          if (!open) {
+            setEditingBalance(null)
+          }
+        }}
+        initialBalance={editingBalance}
+        onSaved={() => {
+          setEditingBalance(null)
           void loadData()
         }}
       />
