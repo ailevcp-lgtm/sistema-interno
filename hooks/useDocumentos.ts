@@ -343,16 +343,16 @@ export function useDocumentos() {
 
     const createBalance = useCallback(async (data: Omit<Balance, 'id' | 'created_at' | 'saldo'>) => {
         setLoading(true)
-        const saldo = data.total_ingresos - data.total_egresos
 
         const { data: newBalance, error } = await supabase
             .from('balances')
-            .insert([{ ...data, saldo }])
+            .insert([data])
             .select()
             .single()
 
         setLoading(false)
         if (error) {
+            console.error('Error creating balance:', error)
             toast.error('Error al crear balance')
             throw error
         }
