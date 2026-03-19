@@ -1630,9 +1630,14 @@ export function useTareas() {
       throwPermissionError('Solo gestión o la persona asignada puede editar la tarea.')
     }
 
-    const rpcPayload: Record<string, unknown> = {
-      descripcion: payload.descripcion ?? null,
-      fecha_vencimiento: payload.fecha_limite ?? null,
+    const rpcPayload: Record<string, unknown> = {}
+
+    if (Object.prototype.hasOwnProperty.call(payload, 'descripcion')) {
+      rpcPayload.descripcion = payload.descripcion ?? null
+    }
+
+    if (Object.prototype.hasOwnProperty.call(payload, 'fecha_limite')) {
+      rpcPayload.fecha_vencimiento = payload.fecha_limite ?? null
     }
 
     if (payload.estado) {
