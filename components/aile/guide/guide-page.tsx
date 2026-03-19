@@ -28,26 +28,22 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
 
-function iconForChapter(chapterId: string) {
-  const iconMap: Record<string, LucideIcon> = {
-    "proposito-y-roles": ShieldCheck,
-    "acceso-y-navegacion": LogIn,
-    inicio: LayoutGrid,
-    calendario: CalendarDays,
-    tareas: KanbanSquare,
-    socios: Users,
-    deudas: CreditCard,
-    movimientos: ArrowUpDown,
-    finanzas: BarChart3,
-    tesoreria: Landmark,
-    reintegros: ReceiptText,
-    documentos: FileText,
-    ajustes: Settings,
-    "mi-perfil": User,
-    "mi-estado-cuenta": Wallet,
-  }
-
-  return iconMap[chapterId] || BookOpen
+const CHAPTER_ICONS: Record<string, LucideIcon> = {
+  "proposito-y-roles": ShieldCheck,
+  "acceso-y-navegacion": LogIn,
+  inicio: LayoutGrid,
+  calendario: CalendarDays,
+  tareas: KanbanSquare,
+  socios: Users,
+  deudas: CreditCard,
+  movimientos: ArrowUpDown,
+  finanzas: BarChart3,
+  tesoreria: Landmark,
+  reintegros: ReceiptText,
+  documentos: FileText,
+  ajustes: Settings,
+  "mi-perfil": User,
+  "mi-estado-cuenta": Wallet,
 }
 
 const GUIDE_PDF_DOWNLOAD_PATH = "/guia-uso/guia-completa-directores-aile.pdf"
@@ -106,7 +102,7 @@ function renderSection(section: GuideSection) {
 }
 
 function ChapterCard({ chapter }: { chapter: GuideChapter }) {
-  const Icon = iconForChapter(chapter.id)
+  const ChapterIcon = CHAPTER_ICONS[chapter.id] || BookOpen
 
   return (
     <section id={chapter.id} className="scroll-mt-24 space-y-5">
@@ -116,7 +112,7 @@ function ChapterCard({ chapter }: { chapter: GuideChapter }) {
             <div className="space-y-3">
               <div className="flex items-center gap-3">
                 <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#6314a7] text-white shadow-sm">
-                  <Icon className="h-5 w-5" />
+                  <ChapterIcon className="h-5 w-5" />
                 </div>
                 <div>
                   <CardTitle className="text-2xl text-foreground">{chapter.title}</CardTitle>
@@ -212,7 +208,7 @@ export function GuidePage() {
             </CardHeader>
             <CardContent className="space-y-2">
               {GUIDE_CHAPTERS.map((chapter) => {
-                const Icon = iconForChapter(chapter.id)
+                const ChapterIcon = CHAPTER_ICONS[chapter.id] || BookOpen
 
                 return (
                   <a
@@ -224,7 +220,7 @@ export function GuidePage() {
                     )}
                   >
                     <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#6314a7]/10 text-[#6314a7]">
-                      <Icon className="h-4 w-4" />
+                      <ChapterIcon className="h-4 w-4" />
                     </div>
                     <div className="min-w-0">
                       <p className="text-sm font-semibold text-foreground">{chapter.shortTitle}</p>
