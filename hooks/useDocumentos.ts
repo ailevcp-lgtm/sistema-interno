@@ -11,6 +11,14 @@ import { runWithRecovery } from '@/lib/async-recovery'
 import { sendEmailNotificationFromClient } from '@/lib/email/client'
 import type { EmailRecipient } from '@/lib/email/types'
 
+interface ActiveSocioRecipient {
+    id: string
+    usuario_id: string
+    nombre: string
+    apellido: string
+    email: string | null
+}
+
 export function useDocumentos() {
     const [loading, setLoading] = useState(false)
 
@@ -158,15 +166,49 @@ export function useDocumentos() {
         }
     }, [])
 
-    const notifyAllSocios = useCallback(async () => {
-        const { data: socios } = await supabase
+    const getActiveSocios = useCallback(async () => {
+        const { data: socios, error } = await supabase
             .from('socios')
             .select('id, usuario_id, nombre, apellido, email')
             .eq('estado', 'activo')
             .not('usuario_id', 'is', null)
-            .not('email', 'is', null)
+        if (error) {
+            throw error
+        }
 
-        return (socios || []) as Array<{ id: string; usuario_id: string; nombre: string; apellido: string; email: string }>
+        return (socios || []) as ActiveSocioRecipient[]
+    }, [])
+
+    const createNotificationsForUsuarios = useCallback(async (
+        usuarios: ActiveSocioRecipient[],
+        payload: {
+            titulo: string
+            mensaje: string
+            tipo?: 'info' | 'alerta' | 'exito' | 'error'
+            link?: string
+        }
+    ) => {
+        const rows = usuarios
+            .filter((usuario) => usuario.usuario_id)
+            .map((usuario) => ({
+                usuario_id: usuario.usuario_id,
+                titulo: payload.titulo,
+                mensaje: payload.mensaje,
+                tipo: payload.tipo || 'info',
+                link: payload.link || null,
+            }))
+
+        if (rows.length === 0) {
+            return
+        }
+
+        const { error } = await supabase
+            .from('notificaciones')
+            .insert(rows)
+
+        if (error) {
+            throw error
+        }
     }, [])
 
     const createResolucion = useCallback(async (data: Omit<Resolucion, 'id' | 'created_at'>) => {
@@ -189,17 +231,17 @@ export function useDocumentos() {
         // Notificar a todos los socios sobre nueva resolución/decreto
         void (async () => {
             try {
-                const socios = await notifyAllSocios()
+                const socios = await getActiveSocios()
                 const { data: sessionData } = await supabase.auth.getSession()
                 const currentUserId = sessionData.session?.user?.id
                 const currentSocio = socios.find((s) => s.usuario_id === currentUserId)
                 const creatorName = currentSocio ? `${currentSocio.nombre} ${currentSocio.apellido}` : 'Un miembro'
 
                 const recipients: EmailRecipient[] = socios
-                    .filter((s) => s.usuario_id !== currentUserId)
+                    .filter((s) => s.usuario_id !== currentUserId && s.email)
                     .map((s) => ({
                         socio_id: s.id,
-                        email: s.email,
+                        email: s.email!,
                         nombre: s.nombre,
                         apellido: s.apellido,
                     }))
@@ -232,7 +274,7 @@ export function useDocumentos() {
         })()
 
         return resolucion
-    }, [notifyAllSocios])
+    }, [getActiveSocios])
 
     const updateResolucion = useCallback(async (id: string, data: Partial<Resolucion>) => {
         setLoading(true)
@@ -274,6 +316,31 @@ export function useDocumentos() {
         }
     }, [])
 
+    const getBalanceById = useCallback(async (id: string) => {
+        try {
+            setLoading(true)
+            const { data, error } = await runWithRecovery(() => supabase
+                .from('balances')
+                .select('*')
+                .eq('id', id)
+                .maybeSingle(), {
+                    label: `balance ${id}`,
+                })
+
+            if (error) {
+                throw error
+            }
+
+            return (data as Balance | null) || null
+        } catch (error) {
+            console.error('Error fetching balance:', error)
+            toast.error('Error al cargar el balance')
+            return null
+        } finally {
+            setLoading(false)
+        }
+    }, [])
+
     const createBalance = useCallback(async (data: Omit<Balance, 'id' | 'created_at' | 'saldo'>) => {
         setLoading(true)
         const saldo = data.total_ingresos - data.total_egresos
@@ -290,8 +357,24 @@ export function useDocumentos() {
             throw error
         }
         toast.success('Balance creado correctamente')
-        return newBalance as Balance
-    }, [])
+        const balance = newBalance as Balance
+
+        void (async () => {
+            try {
+                const socios = await getActiveSocios()
+                await createNotificationsForUsuarios(socios, {
+                    titulo: 'Nuevo balance disponible',
+                    mensaje: `Se subio el balance ${balance.periodo}. Ya podes verlo en Documentos.`,
+                    tipo: 'info',
+                    link: `/documentos/balances/${balance.id}`,
+                })
+            } catch (notificationError) {
+                console.warn('Error creando notificaciones de balance:', notificationError)
+            }
+        })()
+
+        return balance
+    }, [createNotificationsForUsuarios, getActiveSocios])
 
     // -- CONFIGURACION --
     const getConfig = useCallback(async (key: string) => {
@@ -339,6 +422,7 @@ export function useDocumentos() {
         createResolucion,
         updateResolucion,
         getBalances,
+        getBalanceById,
         createBalance,
         getConfig,
         updateConfig

@@ -13,6 +13,7 @@ import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { useAuth } from "@/hooks/useAuth"
 import { useResumeRefresh } from "@/hooks/useResumeRefresh"
+import { BalanceUploadDialog } from "@/components/aile/balance-upload-dialog"
 import {
   Tooltip,
   TooltipContent,
@@ -61,7 +62,7 @@ export function DocumentosPage() {
   const tabFromUrl = searchParams.get("tab")
   const [activeTab, setActiveTab] = useState<DocTab>("estatuto")
   const [expandedArticle, setExpandedArticle] = useState<string | null>(null)
-  const { loading, getEstatuto, getResoluciones, getBalances, getConfig } = useDocumentos()
+  const { getEstatuto, getResoluciones, getBalances, getConfig } = useDocumentos()
   const { hasPermission } = useAuth()
 
   const [articulos, setArticulos] = useState<ArticuloEstatuto[]>([])
@@ -71,6 +72,7 @@ export function DocumentosPage() {
   const [tabLoading, setTabLoading] = useState(true)
   const [estatutoPdfUrl, setEstatutoPdfUrl] = useState<string | null>(null)
   const [selectedNorma, setSelectedNorma] = useState<Resolucion | null>(null)
+  const [isBalanceUploadOpen, setIsBalanceUploadOpen] = useState(false)
 
   // Check if user is admin
   const isAdmin = hasPermission("documentos", "crear")
@@ -164,7 +166,7 @@ export function DocumentosPage() {
               </Link>
             )}
             {activeTab === "balances" && (
-              <Button size="sm" className="gap-2">
+              <Button size="sm" className="gap-2" onClick={() => setIsBalanceUploadOpen(true)}>
                 <Upload className="w-4 h-4" />
                 <span className="hidden sm:inline">Subir Balance</span>
               </Button>
@@ -511,7 +513,7 @@ export function DocumentosPage() {
                   return (
                     <Card key={bal.id} className="border border-border shadow-none">
                       <CardContent className="p-4">
-                        <div className="flex items-center justify-between gap-3">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                           <div className="flex items-center gap-3">
                             <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: "#ede5f7" }}>
                               <BarChart2 className="w-[18px] h-[18px]" style={{ color: "#6314a7" }} strokeWidth={1.8} />
@@ -525,10 +527,18 @@ export function DocumentosPage() {
                             </div>
                           </div>
                           {bal.archivo_url && (
-                            <Button onClick={() => handleDownload(bal.archivo_url, `Balance_${bal.periodo}.pdf`)} size="sm" variant="outline" className="gap-1.5 bg-transparent">
-                              <Download className="w-4 h-4" />
-                              <span className="hidden sm:inline">PDF</span>
-                            </Button>
+                            <div className="flex items-center gap-2 sm:justify-end">
+                              <Button asChild size="sm" variant="outline" className="gap-1.5 bg-transparent">
+                                <Link href={`/documentos/balances/${bal.id}`}>
+                                  <Eye className="w-4 h-4" />
+                                  <span className="hidden sm:inline">Ver PDF</span>
+                                </Link>
+                              </Button>
+                              <Button onClick={() => handleDownload(bal.archivo_url, `Balance_${bal.periodo}.pdf`)} size="sm" variant="outline" className="gap-1.5 bg-transparent">
+                                <Download className="w-4 h-4" />
+                                <span className="hidden sm:inline">Descargar</span>
+                              </Button>
+                            </div>
                           )}
                         </div>
                       </CardContent>
@@ -540,6 +550,14 @@ export function DocumentosPage() {
           )}
         </>
       )}
+
+      <BalanceUploadDialog
+        open={isBalanceUploadOpen}
+        onOpenChange={setIsBalanceUploadOpen}
+        onUploaded={() => {
+          void loadData()
+        }}
+      />
 
       <Dialog open={Boolean(selectedNorma)} onOpenChange={(isOpen) => !isOpen && setSelectedNorma(null)}>
         <DialogContent className="sm:max-w-3xl max-h-[85vh] overflow-x-hidden">
