@@ -127,21 +127,6 @@ function statusBadge(status: EstadoTareaKanban) {
   }
 }
 
-function statusMarker(status: EstadoTareaKanban) {
-  switch (status) {
-    case 'pendiente':
-      return 'border-slate-400 text-slate-500'
-    case 'en_progreso':
-      return 'border-sky-500 text-sky-500'
-    case 'en_revision':
-      return 'border-amber-500 text-amber-500'
-    case 'completada':
-      return 'border-emerald-500 text-emerald-500'
-    default:
-      return 'border-slate-400 text-slate-500'
-  }
-}
-
 const STATUS_OPTIONS: EstadoTareaKanban[] = ['pendiente', 'en_progreso', 'en_revision', 'completada']
 const PRIORITY_OPTIONS: PrioridadTarea[] = [1, 2, 3, 4]
 
@@ -171,11 +156,56 @@ function priorityBadge(priority: PrioridadTarea) {
     case 2:
       return 'bg-orange-100 text-orange-700 border-orange-200'
     case 3:
-      return 'bg-sky-100 text-sky-700 border-sky-200'
+      return 'bg-amber-100 text-amber-700 border-amber-200'
     case 4:
-      return 'bg-slate-100 text-slate-700 border-slate-200'
+      return 'bg-emerald-100 text-emerald-700 border-emerald-200'
     default:
       return 'bg-slate-100 text-slate-700 border-slate-200'
+  }
+}
+
+function priorityMarker(priority: PrioridadTarea) {
+  switch (priority) {
+    case 1:
+      return {
+        tone: 'border-rose-500 text-rose-500',
+        hover: 'hover:border-rose-500',
+        ring: 'focus-visible:ring-rose-400',
+        completed: 'bg-rose-50',
+        check: 'text-rose-600',
+      }
+    case 2:
+      return {
+        tone: 'border-orange-500 text-orange-500',
+        hover: 'hover:border-orange-500',
+        ring: 'focus-visible:ring-orange-400',
+        completed: 'bg-orange-50',
+        check: 'text-orange-600',
+      }
+    case 3:
+      return {
+        tone: 'border-amber-500 text-amber-500',
+        hover: 'hover:border-amber-500',
+        ring: 'focus-visible:ring-amber-400',
+        completed: 'bg-amber-50',
+        check: 'text-amber-600',
+      }
+    case 4:
+      return {
+        tone: 'border-emerald-500 text-emerald-500',
+        hover: 'hover:border-emerald-500',
+        ring: 'focus-visible:ring-emerald-400',
+        completed: 'bg-emerald-50',
+        check: 'text-emerald-600',
+      }
+    default:
+      return {
+        tone: 'border-slate-400 text-slate-500',
+        hover: 'hover:border-slate-500',
+        ring: 'focus-visible:ring-slate-400',
+        completed: 'bg-slate-50',
+        check: 'text-slate-600',
+      }
   }
 }
 
@@ -353,6 +383,7 @@ export function TareasTaskCard({
   const assignee = task.asignado_usuario_id ? userById.get(task.asignado_usuario_id) : undefined
   const assigneeName = assignee ? `${assignee.nombre} ${assignee.apellido}`.trim() : 'Sin asignar'
   const taskPriority = task.prioridad || 3
+  const taskPriorityMarker = priorityMarker(taskPriority)
   const taskDescription = (task.descripcion || '').trim()
   const backendWorkflowLabel = workflowLabel(task.estado_backend)
   const dueDate = parseDateOnly(task.fecha_limite)
@@ -522,15 +553,19 @@ export function TareasTaskCard({
             title={canQuickComplete ? 'Marcar como completada' : 'Completada'}
             className={cn(
               'mt-0.5 h-5 w-5 shrink-0 rounded-full border-2 bg-white transition-all',
-              statusMarker(task.estado),
+              taskPriorityMarker.tone,
               canQuickComplete
-                ? 'cursor-pointer hover:scale-105 hover:border-emerald-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-1'
+                ? cn(
+                    'cursor-pointer hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1',
+                    taskPriorityMarker.hover,
+                    taskPriorityMarker.ring
+                  )
                 : 'cursor-default',
-              task.estado === 'completada' && 'bg-emerald-50'
+              task.estado === 'completada' && taskPriorityMarker.completed
             )}
           >
             {task.estado === 'completada' && (
-              <Check className="mx-auto h-3 w-3 text-emerald-600" />
+              <Check className={cn('mx-auto h-3 w-3', taskPriorityMarker.check)} />
             )}
           </button>
 
