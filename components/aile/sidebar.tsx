@@ -5,6 +5,7 @@ import {
   CalendarDays,
   KanbanSquare,
   Users,
+  Users2,
   CreditCard,
   ArrowUpDown,
   BarChart2,
@@ -21,6 +22,7 @@ import { useAuth } from "@/hooks/useAuth"
 const navItems = [
   { id: "dashboard", label: "Inicio", icon: LayoutGrid, recurso: "dashboard" as const },
   { id: "calendario", label: "Calendario", icon: CalendarDays, recurso: "calendario" as const },
+  { id: "reuniones", label: "Reuniones", icon: Users2, recurso: "reuniones" as const },
   { id: "tareas", label: "Tareas", icon: KanbanSquare, recurso: "tareas" as const },
   { id: "socios", label: "Socios", icon: Users, recurso: "socios" as const },
   { id: "deudas", label: "Deudas", icon: CreditCard, recurso: "deudas" as const, allowOwnDebtView: true },

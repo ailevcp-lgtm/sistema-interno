@@ -444,8 +444,40 @@ export type Recurso =
   | 'resoluciones'
   | 'balances'
   | 'logs'
+  | 'reuniones'
 
 export type Accion = 'ver' | 'crear' | 'editar' | 'eliminar' | 'aprobar'
+
+// ── Reuniones por Dirección ────────────────────────────────
+
+export type EstadoReunionDireccion = 'programada' | 'finalizada' | 'cancelada'
+
+export interface ReunionDireccion {
+  id: string
+  titulo: string
+  descripcion?: string | null
+  direccion: DireccionBase
+  fecha_inicio: string
+  fecha_fin: string
+  lugar?: string | null
+  creado_por_socio_id?: string | null
+  estado: EstadoReunionDireccion
+  asistencia_registrada: boolean
+  calendario_reunion_id?: string | null
+  created_at: string
+  updated_at: string
+  creado_por?: Socio
+  asistentes?: ReunionDireccionAsistente[]
+}
+
+export interface ReunionDireccionAsistente {
+  id: string
+  reunion_id: string
+  socio_id: string
+  registrado_por_socio_id?: string | null
+  created_at: string
+  socio?: Pick<Socio, 'id' | 'nombre' | 'apellido' | 'email' | 'rol_aile'>
+}
 
 // ── Tipos financieros extendidos (Power BI migration) ──────
 

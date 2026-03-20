@@ -37,6 +37,7 @@ export const PERMISSION_RESOURCES: Recurso[] = [
   'resoluciones',
   'balances',
   'logs',
+  'reuniones',
 ]
 
 export const PERMISSION_ACTIONS: Accion[] = ['ver', 'crear', 'editar', 'eliminar', 'aprobar']
@@ -57,6 +58,7 @@ export const RECURSO_LABELS: Record<Recurso, string> = {
   resoluciones: 'Resoluciones',
   balances: 'Balances',
   logs: 'Logs',
+  reuniones: 'Reuniones',
 }
 
 export const ACCION_LABELS: Record<Accion, string> = {
@@ -71,6 +73,7 @@ export const ACCION_LABELS: Record<Accion, string> = {
 export const NAV_ITEMS: NavItem[] = [
   { href: '/dashboard', label: 'Inicio', icon: 'Home' },
   { href: '/calendario', label: 'Calendario', icon: 'CalendarDays' },
+  { href: '/reuniones', label: 'Reuniones', icon: 'Users2' },
   { href: '/tareas', label: 'Tareas', icon: 'KanbanSquare' },
   { href: '/socios', label: 'Socios', icon: 'Users' },
   { href: '/deudas', label: 'Deudas', icon: 'Wallet' },
@@ -374,6 +377,13 @@ export const PERMISSIONS: Record<Recurso, Record<Accion, Rol[]>> = {
     crear: [],
     editar: [],
     eliminar: [],
+    aprobar: [],
+  },
+  reuniones: {
+    ver: ['socio', 'comision_directiva', 'revisor_cuentas', 'admin'],
+    crear: ['comision_directiva', 'admin'],
+    editar: ['comision_directiva', 'admin'],
+    eliminar: ['admin'],
     aprobar: [],
   },
 }
