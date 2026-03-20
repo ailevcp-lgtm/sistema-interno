@@ -7,6 +7,7 @@ import { Toaster } from '@/components/ui/sonner'
 import {
   ICON_VERSION,
   SITE_DESCRIPTION,
+  SITE_FAVICON_PATH,
   SITE_KEYWORDS,
   SITE_LOCALE,
   SITE_NAME,
@@ -42,7 +43,7 @@ export const metadata: Metadata = {
   },
   icons: {
     icon: [
-      { url: `/icon?v=${ICON_VERSION}`, type: 'image/png', sizes: '512x512' },
+      { url: `${SITE_FAVICON_PATH}?v=${ICON_VERSION}`, type: 'image/png', sizes: '1080x1080' },
     ],
     shortcut: [{ url: `/favicon.ico?v=${ICON_VERSION}` }],
     apple: [{ url: `/apple-icon?v=${ICON_VERSION}`, sizes: '180x180', type: 'image/png' }],

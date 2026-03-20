@@ -1,6 +1,7 @@
 export const SITE_NAME = 'Sistema Interno AILE'
 export const SITE_SHORT_NAME = 'AILE'
-export const ICON_VERSION = '20260311b'
+export const SITE_FAVICON_PATH = '/FAVICONS%20AILE-02.png'
+export const ICON_VERSION = '20260320a'
 export const SITE_DESCRIPTION =
   'Plataforma privada para administrar socios, deudas, finanzas, tesoreria y documentos de AILE.'
 export const LOGIN_PAGE_DESCRIPTION =
