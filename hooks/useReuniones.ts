@@ -61,6 +61,14 @@ export interface RegistrarAsistenciaPayload {
   socioIds: string[]
 }
 
+export interface EditarReunionPayload {
+  titulo: string
+  descripcion?: string
+  fechaInicio: string
+  fechaFin: string
+  lugar?: string
+}
+
 export interface CargarHistoricaPayload {
   /** Opcional: si no se pasa, se genera automáticamente */
   titulo?: string
@@ -214,6 +222,7 @@ export function useReuniones() {
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
   const [registrando, setRegistrando] = useState(false)
+  const [editando, setEditando] = useState(false)
 
   // Datos derivados del rol del usuario
   const miDireccion = directionFromRoleName(rolAile)
@@ -451,10 +460,12 @@ export function useReuniones() {
         setRegistrando(true)
 
         // Eliminar asistentes previos y re-insertar
-        await supabase
+        const { error: deleteError } = await supabase
           .from('reunion_direccion_asistentes')
           .delete()
           .eq('reunion_id', payload.reunionId)
+
+        if (deleteError) throw deleteError
 
         if (payload.socioIds.length > 0) {
           const { error: insertError } = await supabase
@@ -499,12 +510,37 @@ export function useReuniones() {
   const cancelarReunion = useCallback(
     async (reunionId: string): Promise<boolean> => {
       if (!puedeCrear) return false
+
+      const reunion = reuniones.find((item) => item.id === reunionId)
+
       try {
         const { error } = await supabase
           .from('reuniones_direccion')
           .update({ estado: 'cancelada' })
           .eq('id', reunionId)
+
         if (error) throw error
+
+        if (reunion?.calendario_reunion_id) {
+          const { error: deleteCalendarParticipantsError } = await supabase
+            .from('reuniones_calendario_participantes')
+            .delete()
+            .eq('reunion_id', reunion.calendario_reunion_id)
+
+          if (deleteCalendarParticipantsError) {
+            console.warn('Error removing synced calendar participants:', deleteCalendarParticipantsError)
+          } else {
+            const { error: deleteCalendarError } = await supabase
+              .from('reuniones_calendario')
+              .delete()
+              .eq('id', reunion.calendario_reunion_id)
+
+            if (deleteCalendarError) {
+              console.warn('Error removing synced calendar meeting:', deleteCalendarError)
+            }
+          }
+        }
+
         setReuniones((prev) =>
           prev.map((r) => (r.id === reunionId ? { ...r, estado: 'cancelada' } : r))
         )
@@ -515,7 +551,7 @@ export function useReuniones() {
         return false
       }
     },
-    [puedeCrear]
+    [puedeCrear, reuniones]
   )
 
   // ── Cargar reunión histórica ──────────────────────────────
@@ -600,6 +636,94 @@ export function useReuniones() {
       }
     },
     [esAdmin, fetchReuniones, miDireccion, puedeCrear, socioId]
+  )
+
+  // ── Editar reunión ────────────────────────────────────────
+
+  const editarReunion = useCallback(
+    async (reunionId: string, payload: EditarReunionPayload): Promise<boolean> => {
+      if (!puedeCrear) {
+        toast.error('No tenés permiso para editar reuniones')
+        return false
+      }
+      try {
+        setEditando(true)
+        const { error } = await supabase
+          .from('reuniones_direccion')
+          .update({
+            titulo: payload.titulo,
+            descripcion: payload.descripcion || null,
+            fecha_inicio: payload.fechaInicio,
+            fecha_fin: payload.fechaFin,
+            lugar: payload.lugar || null,
+          })
+          .eq('id', reunionId)
+        if (error) throw error
+        setReuniones((prev) =>
+          prev.map((r) =>
+            r.id === reunionId
+              ? {
+                  ...r,
+                  titulo: payload.titulo,
+                  descripcion: payload.descripcion || null,
+                  fecha_inicio: payload.fechaInicio,
+                  fecha_fin: payload.fechaFin,
+                  lugar: payload.lugar || null,
+                }
+              : r
+          )
+        )
+        toast.success('Reunión actualizada')
+        return true
+      } catch {
+        toast.error('Error al actualizar la reunión')
+        return false
+      } finally {
+        setEditando(false)
+      }
+    },
+    [puedeCrear]
+  )
+
+  // ── Eliminar reunión ──────────────────────────────────────
+
+  const eliminarReunion = useCallback(
+    async (reunionId: string): Promise<boolean> => {
+      if (!puedeCrear) return false
+      const reunion = reuniones.find((r) => r.id === reunionId)
+      try {
+        await supabase
+          .from('reunion_direccion_asistentes')
+          .delete()
+          .eq('reunion_id', reunionId)
+
+        const { error } = await supabase
+          .from('reuniones_direccion')
+          .delete()
+          .eq('id', reunionId)
+
+        if (error) throw error
+
+        if (reunion?.calendario_reunion_id) {
+          await supabase
+            .from('reuniones_calendario_participantes')
+            .delete()
+            .eq('reunion_id', reunion.calendario_reunion_id)
+          await supabase
+            .from('reuniones_calendario')
+            .delete()
+            .eq('id', reunion.calendario_reunion_id)
+        }
+
+        setReuniones((prev) => prev.filter((r) => r.id !== reunionId))
+        toast.success('Reunión eliminada')
+        return true
+      } catch {
+        toast.error('Error al eliminar la reunión')
+        return false
+      }
+    },
+    [puedeCrear, reuniones]
   )
 
   // ── Panel de frecuencia ───────────────────────────────────
@@ -725,6 +849,9 @@ export function useReuniones() {
     cargarReunionHistorica,
     registrarAsistencia,
     cancelarReunion,
+    editarReunion,
+    eliminarReunion,
+    editando,
     fetchReuniones,
   }
 }

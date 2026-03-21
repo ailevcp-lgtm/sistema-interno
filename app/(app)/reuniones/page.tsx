@@ -18,6 +18,8 @@ import {
   History,
   BarChart3,
   Medal,
+  Pencil,
+  Trash2,
 } from 'lucide-react'
 import { cn, formatDate, formatDateTime } from '@/lib/utils'
 import { useRequireAuth } from '@/hooks/useAuth'
@@ -25,6 +27,7 @@ import {
   useReuniones,
   directionFromRoleName,
   type CargarHistoricaPayload,
+  type EditarReunionPayload,
   type EstadisticaAsistencia,
   type EstadisticaDireccion,
 } from '@/hooks/useReuniones'
@@ -88,6 +91,9 @@ export default function ReunionesPage() {
     cargarReunionHistorica,
     registrarAsistencia,
     cancelarReunion,
+    editarReunion,
+    eliminarReunion,
+    editando,
   } = useReuniones()
 
   const [dialogoHistoricaAbierto, setDialogoHistoricaAbierto] = useState(false)
@@ -101,6 +107,12 @@ export default function ReunionesPage() {
   // Diálogo de asistencia
   const [reunionAsistencia, setReunionAsistencia] = useState<ReunionDireccion | null>(null)
   const [sociosSeleccionados, setSociosSeleccionados] = useState<Set<string>>(new Set())
+
+  // Diálogo de edición
+  const [reunionEditando, setReunionEditando] = useState<ReunionDireccion | null>(null)
+
+  // Diálogo de confirmación de eliminación
+  const [reunionAEliminar, setReunionAEliminar] = useState<ReunionDireccion | null>(null)
 
   // Expandir detalles de asistentes
   const [expandidos, setExpandidos] = useState<Set<string>>(new Set())
@@ -284,6 +296,8 @@ export default function ReunionesPage() {
                   onToggleExpandir={() => toggleExpandido(r.id)}
                   onRegistrarAsistencia={() => abrirDialogoAsistencia(r)}
                   onCancelar={() => cancelarReunion(r.id)}
+                  onEditar={() => setReunionEditando(r)}
+                  onEliminar={() => setReunionAEliminar(r)}
                 />
               ))}
             </div>
@@ -338,6 +352,50 @@ export default function ReunionesPage() {
       />
 
       {/* Diálogo de asistencia */}
+      {/* Diálogo de edición */}
+      {reunionEditando && (
+        <DialogEditarReunion
+          reunion={reunionEditando}
+          editando={editando}
+          onCerrar={() => setReunionEditando(null)}
+          onGuardar={async (payload) => {
+            const ok = await editarReunion(reunionEditando.id, payload)
+            if (ok) setReunionEditando(null)
+          }}
+        />
+      )}
+
+      {/* Diálogo de confirmación de eliminación */}
+      {reunionAEliminar && (
+        <Dialog open onOpenChange={() => setReunionAEliminar(null)}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-destructive">
+                <Trash2 className="w-5 h-5" />
+                Eliminar reunión
+              </DialogTitle>
+              <DialogDescription>
+                ¿Seguro que querés eliminar <strong>{reunionAEliminar.titulo}</strong>? Esta acción no se puede deshacer.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setReunionAEliminar(null)}>
+                Cancelar
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={async () => {
+                  const ok = await eliminarReunion(reunionAEliminar.id)
+                  if (ok) setReunionAEliminar(null)
+                }}
+              >
+                Eliminar
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
       {reunionAsistencia && (
         <Dialog open onOpenChange={() => setReunionAsistencia(null)}>
           <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
@@ -420,6 +478,8 @@ interface TarjetaReunionProps {
   onToggleExpandir: () => void
   onRegistrarAsistencia: () => void
   onCancelar: () => void
+  onEditar: () => void
+  onEliminar: () => void
 }
 
 function TarjetaReunion({
@@ -429,6 +489,8 @@ function TarjetaReunion({
   onToggleExpandir,
   onRegistrarAsistencia,
   onCancelar,
+  onEditar,
+  onEliminar,
 }: TarjetaReunionProps) {
   const estadoConfig = ESTADO_CONFIG[reunion.estado] || ESTADO_CONFIG.programada
   const EstadoIcon = estadoConfig.icon
@@ -553,6 +615,29 @@ function TarjetaReunion({
                 <X className="w-3 h-3 mr-1" />
                 Cancelar
               </Button>
+            )}
+
+            {puedeCrear && (
+              <div className="flex gap-1">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={onEditar}
+                  className="text-xs h-7 px-2 text-muted-foreground hover:text-foreground"
+                  title="Editar reunión"
+                >
+                  <Pencil className="w-3 h-3" />
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={onEliminar}
+                  className="text-xs h-7 px-2 text-muted-foreground hover:text-destructive"
+                  title="Eliminar reunión"
+                >
+                  <Trash2 className="w-3 h-3" />
+                </Button>
+              </div>
             )}
           </div>
         </div>
@@ -897,6 +982,116 @@ function DialogNuevaReunion({
           >
             {creating && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
             Agendar reunión
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ── Diálogo editar reunión ──────────────────────────────────
+
+interface DialogEditarReunionProps {
+  reunion: ReunionDireccion
+  editando: boolean
+  onCerrar: () => void
+  onGuardar: (payload: EditarReunionPayload) => Promise<void>
+}
+
+function DialogEditarReunion({ reunion, editando, onCerrar, onGuardar }: DialogEditarReunionProps) {
+  const fechaLocal = reunion.fecha_inicio.split('T')[0]
+  const horaInicioLocal = reunion.fecha_inicio.split('T')[1]?.slice(0, 5) || '09:00'
+  const horaFinLocal = reunion.fecha_fin.split('T')[1]?.slice(0, 5) || '10:00'
+
+  const [titulo, setTitulo] = useState(reunion.titulo)
+  const [descripcion, setDescripcion] = useState(reunion.descripcion || '')
+  const [lugar, setLugar] = useState(reunion.lugar || '')
+  const [fecha, setFecha] = useState(fechaLocal)
+  const [horaInicio, setHoraInicio] = useState(horaInicioLocal)
+  const [horaFin, setHoraFin] = useState(horaFinLocal)
+
+  async function handleSubmit() {
+    if (!titulo.trim()) {
+      toast.error('El título es obligatorio')
+      return
+    }
+    if (!fecha) {
+      toast.error('La fecha es obligatoria')
+      return
+    }
+    const fechaInicioISO = `${fecha}T${horaInicio}:00`
+    const fechaFinISO = `${fecha}T${horaFin}:00`
+    if (fechaFinISO <= fechaInicioISO) {
+      toast.error('La hora de fin debe ser posterior a la de inicio')
+      return
+    }
+    await onGuardar({
+      titulo: titulo.trim(),
+      descripcion: descripcion.trim() || undefined,
+      fechaInicio: fechaInicioISO,
+      fechaFin: fechaFinISO,
+      lugar: lugar.trim() || undefined,
+    })
+  }
+
+  return (
+    <Dialog open onOpenChange={onCerrar}>
+      <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Editar reunión</DialogTitle>
+          <DialogDescription>
+            Modificá los datos de la reunión.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-2">
+          <div className="space-y-2">
+            <Label>Título *</Label>
+            <Input value={titulo} onChange={(e) => setTitulo(e.target.value)} />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Descripción</Label>
+            <Textarea
+              value={descripcion}
+              onChange={(e) => setDescripcion(e.target.value)}
+              rows={3}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Fecha *</Label>
+            <Input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label>Hora inicio</Label>
+              <Input type="time" value={horaInicio} onChange={(e) => setHoraInicio(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Hora fin</Label>
+              <Input type="time" value={horaFin} onChange={(e) => setHoraFin(e.target.value)} />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Lugar (opcional)</Label>
+            <Input value={lugar} onChange={(e) => setLugar(e.target.value)} placeholder="Ej: Sala virtual, Google Meet, etc." />
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onCerrar}>
+            Cancelar
+          </Button>
+          <Button
+            onClick={handleSubmit}
+            disabled={editando}
+            className="bg-primary hover:bg-primary/90 text-primary-foreground"
+          >
+            {editando && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+            Guardar cambios
           </Button>
         </DialogFooter>
       </DialogContent>
