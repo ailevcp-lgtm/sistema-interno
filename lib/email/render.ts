@@ -1,10 +1,10 @@
 import type { EmailNotificationData, EmailRecipient } from './types'
 
-// Colores AILE (del theme CSS)
+// Colores AILE (del theme CSS -- primary: 272 79% 37%)
 const COLORS = {
-  primary: '#6d28d9',         // --primary: 272 79% 37%
-  primaryDark: '#5b21b6',
-  primaryLight: '#8b5cf6',
+  primary: '#6314A9',         // hsl(272, 79%, 37%) — violeta oficial AILE
+  primaryDark: '#4e0f87',
+  primaryLight: '#8b3fd4',
   background: '#faf8fc',      // --background
   foreground: '#1e1b2e',      // --foreground
   muted: '#6b7280',           // --muted-foreground
@@ -83,13 +83,14 @@ function formatEstado(estado: string): string {
   return map[estado] || estado
 }
 
-function baseLayout(title: string, content: string, preferencesUrl: string): string {
+function baseLayout(title: string, content: string, preferencesUrl: string, appUrl = ''): string {
   return `<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>${title}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@900&display=swap" rel="stylesheet" />
 </head>
 <body style="margin:0;padding:0;background-color:${COLORS.background};font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:${COLORS.background};">
@@ -98,9 +99,9 @@ function baseLayout(title: string, content: string, preferencesUrl: string): str
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background-color:${COLORS.white};border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
           <!-- Header -->
           <tr>
-            <td style="background-color:${COLORS.primary};padding:28px 32px;text-align:center;">
-              <h1 style="margin:0;color:${COLORS.white};font-size:22px;font-weight:700;letter-spacing:1px;">AILE</h1>
-              <p style="margin:4px 0 0;color:rgba(255,255,255,0.8);font-size:12px;letter-spacing:0.5px;">Sistema Interno</p>
+            <td style="background:linear-gradient(135deg,${COLORS.primary} 0%,${COLORS.primaryDark} 100%);padding:28px 32px;text-align:center;">
+              <h1 style="margin:0;color:${COLORS.white};font-family:'Montserrat',Arial,sans-serif;font-size:42px;font-weight:900;letter-spacing:6px;">AILE</h1>
+              <p style="margin:8px 0 0;color:rgba(255,255,255,0.75);font-size:11px;letter-spacing:2px;text-transform:uppercase;">Sistema Interno</p>
             </td>
           </tr>
           <!-- Content -->
@@ -112,12 +113,9 @@ function baseLayout(title: string, content: string, preferencesUrl: string): str
           <!-- Footer -->
           <tr>
             <td style="padding:20px 32px;border-top:1px solid ${COLORS.border};text-align:center;">
-              <p style="margin:0 0 8px;color:${COLORS.muted};font-size:12px;">
+              <p style="margin:0;color:${COLORS.muted};font-size:12px;">
                 Este email fue enviado automáticamente por el Sistema Interno de AILE.
               </p>
-              <a href="${preferencesUrl}" style="color:${COLORS.primaryLight};font-size:12px;text-decoration:underline;">
-                Configurar preferencias de email
-              </a>
             </td>
           </tr>
         </table>
@@ -172,6 +170,8 @@ export function renderEmailHtml(
   const documentosUrl = `${appUrl}/documentos`
   const preferencesUrl = `${appUrl}/tareas?preferencias_email=1`
 
+  const layout = (title: string, content: string) => baseLayout(title, content, preferencesUrl, appUrl)
+
   switch (data.type) {
     case 'tarea_asignada': {
       const rows = [
@@ -183,15 +183,14 @@ export function renderEmailHtml(
         infoRow('Asignada por', data.asignado_por_nombre),
       ].join('')
 
-      return baseLayout(
+      return layout(
         'Tarea asignada',
         `${greeting}
         <p style="margin:12px 0 0;color:${COLORS.foreground};font-size:14px;">
           Se te ha asignado una nueva tarea:
         </p>
         ${detailsTable(rows)}
-        ${ctaButton('Ver tarea', tareasUrl)}`,
-        preferencesUrl
+        ${ctaButton('Ver tarea', tareasUrl)}`
       )
     }
 
@@ -204,7 +203,7 @@ export function renderEmailHtml(
         infoRow('Cambiado por', data.cambiado_por_nombre),
       ].join('')
 
-      return baseLayout(
+      return layout(
         'Tarea actualizada',
         `${greeting}
         <p style="margin:12px 0 0;color:${COLORS.foreground};font-size:14px;">
@@ -212,7 +211,6 @@ export function renderEmailHtml(
         </p>
         ${detailsTable(rows)}
         ${ctaButton('Ver tarea', tareasUrl)}`,
-        preferencesUrl
       )
     }
 
@@ -228,7 +226,7 @@ export function renderEmailHtml(
         infoRow('Fecha límite', `${badge(formatDate(data.fecha_limite), urgencyColor)}`),
       ].join('')
 
-      return baseLayout(
+      return layout(
         'Recordatorio de vencimiento',
         `${greeting}
         <p style="margin:12px 0 0;color:${COLORS.foreground};font-size:14px;">
@@ -236,7 +234,6 @@ export function renderEmailHtml(
         </p>
         ${detailsTable(rows)}
         ${ctaButton('Ver tarea', tareasUrl)}`,
-        preferencesUrl
       )
     }
 
@@ -248,7 +245,7 @@ export function renderEmailHtml(
         infoRow('Creada por', data.creado_por_nombre),
       ].join('')
 
-      return baseLayout(
+      return layout(
         'Nueva subtarea',
         `${greeting}
         <p style="margin:12px 0 0;color:${COLORS.foreground};font-size:14px;">
@@ -256,7 +253,6 @@ export function renderEmailHtml(
         </p>
         ${detailsTable(rows)}
         ${ctaButton('Ver tarea', tareasUrl)}`,
-        preferencesUrl
       )
     }
 
@@ -268,7 +264,7 @@ export function renderEmailHtml(
         data.motivo ? infoRow('Motivo', data.motivo) : '',
       ].join('')
 
-      return baseLayout(
+      return layout(
         'Handoff solicitado',
         `${greeting}
         <p style="margin:12px 0 0;color:${COLORS.foreground};font-size:14px;">
@@ -276,7 +272,6 @@ export function renderEmailHtml(
         </p>
         ${detailsTable(rows)}
         ${ctaButton('Ver handoff', tareasUrl)}`,
-        preferencesUrl
       )
     }
 
@@ -291,7 +286,7 @@ export function renderEmailHtml(
         data.comentario ? infoRow('Comentario', data.comentario) : '',
       ].join('')
 
-      return baseLayout(
+      return layout(
         `Handoff ${statusText.toLowerCase()}`,
         `${greeting}
         <p style="margin:12px 0 0;color:${COLORS.foreground};font-size:14px;">
@@ -299,7 +294,6 @@ export function renderEmailHtml(
         </p>
         ${detailsTable(rows)}
         ${ctaButton('Ver tarea', tareasUrl)}`,
-        preferencesUrl
       )
     }
 
@@ -311,7 +305,7 @@ export function renderEmailHtml(
         data.comentario ? infoRow('Comentario', data.comentario) : '',
       ].join('')
 
-      return baseLayout(
+      return layout(
         'Aprobación CD pendiente',
         `${greeting}
         <p style="margin:12px 0 0;color:${COLORS.foreground};font-size:14px;">
@@ -319,7 +313,6 @@ export function renderEmailHtml(
         </p>
         ${detailsTable(rows)}
         ${ctaButton('Revisar tarea', tareasUrl)}`,
-        preferencesUrl
       )
     }
 
@@ -339,7 +332,7 @@ export function renderEmailHtml(
         data.observacion ? infoRow('Observación', data.observacion) : '',
       ].join('')
 
-      return baseLayout(
+      return layout(
         `Tarea ${decision.text.toLowerCase()} por CD`,
         `${greeting}
         <p style="margin:12px 0 0;color:${COLORS.foreground};font-size:14px;">
@@ -347,7 +340,6 @@ export function renderEmailHtml(
         </p>
         ${detailsTable(rows)}
         ${ctaButton('Ver tarea', tareasUrl)}`,
-        preferencesUrl
       )
     }
 
@@ -370,7 +362,7 @@ export function renderEmailHtml(
         infoRow('Agendada por', data.creado_por_nombre),
       ].join('')
 
-      return baseLayout(
+      return layout(
         'Nueva reunión agendada',
         `${greeting}
         <p style="margin:12px 0 0;color:${COLORS.foreground};font-size:14px;">
@@ -378,7 +370,6 @@ export function renderEmailHtml(
         </p>
         ${detailsTable(rows)}
         ${ctaButton('Ver calendario', calendarioUrl)}`,
-        preferencesUrl
       )
     }
 
@@ -391,7 +382,7 @@ export function renderEmailHtml(
         infoRow('Modificada por', data.modificado_por_nombre),
       ].join('')
 
-      return baseLayout(
+      return layout(
         'Reunión modificada',
         `${greeting}
         <p style="margin:12px 0 0;color:${COLORS.foreground};font-size:14px;">
@@ -399,7 +390,6 @@ export function renderEmailHtml(
         </p>
         ${detailsTable(rows)}
         ${ctaButton('Ver calendario', calendarioUrl)}`,
-        preferencesUrl
       )
     }
 
@@ -410,7 +400,7 @@ export function renderEmailHtml(
         infoRow('Cancelada por', data.cancelado_por_nombre),
       ].join('')
 
-      return baseLayout(
+      return layout(
         'Reunión cancelada',
         `${greeting}
         <p style="margin:12px 0 0;color:${COLORS.foreground};font-size:14px;">
@@ -418,7 +408,6 @@ export function renderEmailHtml(
         </p>
         ${detailsTable(rows)}
         ${ctaButton('Ver calendario', calendarioUrl)}`,
-        preferencesUrl
       )
     }
 
@@ -432,7 +421,7 @@ export function renderEmailHtml(
         infoRow('Confirmado por', data.definido_por_nombre),
       ].join('')
 
-      return baseLayout(
+      return layout(
         'Fecha de planificación confirmada',
         `${greeting}
         <p style="margin:12px 0 0;color:${COLORS.foreground};font-size:14px;">
@@ -440,7 +429,6 @@ export function renderEmailHtml(
         </p>
         ${detailsTable(rows)}
         ${ctaButton('Ver calendario', calendarioUrl)}`,
-        preferencesUrl
       )
     }
 
@@ -454,7 +442,7 @@ export function renderEmailHtml(
         infoRow('Publicada por', data.creado_por_nombre),
       ].join('')
 
-      return baseLayout(
+      return layout(
         'Nueva resolución de Comisión Directiva',
         `${greeting}
         <p style="margin:12px 0 0;color:${COLORS.foreground};font-size:14px;">
@@ -462,7 +450,6 @@ export function renderEmailHtml(
         </p>
         ${detailsTable(rows)}
         ${ctaButton('Ver resolución', documentosUrl)}`,
-        preferencesUrl
       )
     }
 
@@ -474,7 +461,7 @@ export function renderEmailHtml(
         infoRow('Publicado por', data.creado_por_nombre),
       ].join('')
 
-      return baseLayout(
+      return layout(
         'Nuevo decreto publicado',
         `${greeting}
         <p style="margin:12px 0 0;color:${COLORS.foreground};font-size:14px;">
@@ -482,7 +469,6 @@ export function renderEmailHtml(
         </p>
         ${detailsTable(rows)}
         ${ctaButton('Ver decreto', documentosUrl)}`,
-        preferencesUrl
       )
     }
 
@@ -493,7 +479,7 @@ export function renderEmailHtml(
         infoRow('Publicado por', data.creado_por_nombre),
       ].join('')
 
-      return baseLayout(
+      return layout(
         'Nuevo balance institucional disponible',
         `${greeting}
         <p style="margin:12px 0 0;color:${COLORS.foreground};font-size:14px;">
@@ -501,7 +487,6 @@ export function renderEmailHtml(
         </p>
         ${detailsTable(rows)}
         ${ctaButton('Ver balance', documentosUrl)}`,
-        preferencesUrl
       )
     }
   }

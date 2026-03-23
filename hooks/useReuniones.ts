@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 import { runWithRecovery } from '@/lib/async-recovery'
 import { useResumeRefresh } from '@/hooks/useResumeRefresh'
 import { normalizeInstitutionalRole } from '@/lib/constants'
+import { sendEmailNotificationFromClient } from '@/lib/email/client'
 import type {
   DireccionBase,
   EstadoReunionDireccion,
@@ -67,6 +68,7 @@ export interface EditarReunionPayload {
   fechaInicio: string
   fechaFin: string
   lugar?: string
+  usuarioIdsInvolucrados?: string[]
 }
 
 export interface CargarHistoricaPayload {
@@ -217,7 +219,7 @@ export function useReuniones() {
 
   const [reuniones, setReuniones] = useState<ReunionDireccion[]>([])
   const [sociosActivos, setSociosActivos] = useState<
-    Array<{ id: string; usuario_id: string; nombre: string; apellido: string; rol_aile?: string | null }>
+    Array<{ id: string; usuario_id: string; nombre: string; apellido: string; rol_aile?: string | null; email?: string | null }>
   >([])
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
@@ -270,7 +272,7 @@ export function useReuniones() {
       () =>
         supabase
           .from('socios')
-          .select('id, usuario_id, nombre, apellido, rol_aile')
+          .select('id, usuario_id, nombre, apellido, rol_aile, email')
           .eq('estado', 'activo')
           .order('apellido'),
       { label: 'socios activos reuniones' }
@@ -282,6 +284,7 @@ export function useReuniones() {
         nombre: string
         apellido: string
         rol_aile?: string | null
+        email?: string | null
       }>
     )
   }, [])
@@ -375,6 +378,37 @@ export function useReuniones() {
 
         setReuniones((prev) => [nuevaReunion, ...prev])
         toast.success('Reunión agendada correctamente')
+
+        // 4. Enviar email a los invitados al calendario (excluir al creador)
+        const invitadoIds = payload.usuarioIdsInvolucrados || []
+        if (invitadoIds.length > 0) {
+          const recipients = sociosActivos
+            .filter(
+              (s) => s.usuario_id && invitadoIds.includes(s.usuario_id) && s.email
+            )
+            .map((s) => ({
+              socio_id: s.id,
+              email: s.email!,
+              nombre: s.nombre,
+              apellido: s.apellido,
+            }))
+
+          if (recipients.length > 0) {
+            const creatorSocio = sociosActivos.find((s) => s.usuario_id === user?.id)
+            const creatorName = creatorSocio ? `${creatorSocio.nombre} ${creatorSocio.apellido}` : 'Un miembro'
+            void sendEmailNotificationFromClient('calendario_reunion_nueva', recipients, {
+              type: 'calendario_reunion_nueva',
+              reunion_titulo: payload.titulo,
+              reunion_fecha: payload.fechaInicio,
+              reunion_fecha_fin: payload.fechaFin,
+              reunion_lugar: payload.lugar || null,
+              reunion_alcance: 'personalizada',
+              creado_por_nombre: creatorName,
+              participacion: null,
+            })
+          }
+        }
+
         return nuevaReunion
       } catch (err) {
         console.error('Error al crear reunión:', err)
@@ -384,7 +418,7 @@ export function useReuniones() {
         setCreating(false)
       }
     },
-    [esAdmin, miDireccion, puedeCrear, socioId, user?.id]
+    [esAdmin, miDireccion, puedeCrear, socioId, sociosActivos, user?.id]
   )
 
   // ── Crear tarea vinculada en el proyecto de la dirección ──
@@ -659,6 +693,68 @@ export function useReuniones() {
           })
           .eq('id', reunionId)
         if (error) throw error
+
+        // Actualizar participantes del calendario si se proporcionaron
+        if (payload.usuarioIdsInvolucrados !== undefined) {
+          const reunion = reuniones.find((r) => r.id === reunionId)
+          let calReunionId = reunion?.calendario_reunion_id || null
+
+          // Si no existe evento de calendario, crearlo ahora
+          if (!calReunionId && payload.usuarioIdsInvolucrados.length > 0) {
+            try {
+              const { data: calData, error: calError } = await supabase.rpc(
+                'rpc_calendar_schedule_meeting',
+                {
+                  p_titulo: payload.titulo,
+                  p_descripcion: payload.descripcion || null,
+                  p_lugar: payload.lugar || null,
+                  p_fecha_inicio: payload.fechaInicio,
+                  p_fecha_fin: payload.fechaFin,
+                  p_alcance: 'personalizada',
+                  p_usuario_ids_involucrados: payload.usuarioIdsInvolucrados,
+                  p_usuario_ids_invitados: [],
+                }
+              )
+              if (!calError && calData) {
+                const calReunion = Array.isArray(calData) ? calData[0] : calData
+                calReunionId = (calReunion as { id?: string })?.id || null
+              }
+              if (calReunionId) {
+                await supabase
+                  .from('reuniones_direccion')
+                  .update({ calendario_reunion_id: calReunionId })
+                  .eq('id', reunionId)
+              }
+            } catch {
+              console.warn('No se pudo crear el evento de calendario')
+            }
+          } else if (calReunionId) {
+            // Ya existe evento: actualizar participantes
+            await supabase
+              .from('reuniones_calendario_participantes')
+              .delete()
+              .eq('reunion_id', calReunionId)
+
+            if (payload.usuarioIdsInvolucrados.length > 0) {
+              const rows = payload.usuarioIdsInvolucrados
+                .map((uid) => {
+                  const socio = sociosActivos.find((s) => s.usuario_id === uid)
+                  if (!socio) return null
+                  return {
+                    reunion_id: calReunionId!,
+                    usuario_id: uid,
+                    socio_id: socio.id,
+                    participacion: 'involucrado' as const,
+                  }
+                })
+                .filter(Boolean)
+              if (rows.length > 0) {
+                await supabase.from('reuniones_calendario_participantes').insert(rows)
+              }
+            }
+          }
+        }
+
         setReuniones((prev) =>
           prev.map((r) =>
             r.id === reunionId
@@ -673,6 +769,34 @@ export function useReuniones() {
               : r
           )
         )
+        // Enviar email a los invitados (excluir al editor)
+        if (payload.usuarioIdsInvolucrados && payload.usuarioIdsInvolucrados.length > 0) {
+          const recipients = sociosActivos
+            .filter(
+              (s) => s.usuario_id && payload.usuarioIdsInvolucrados!.includes(s.usuario_id) && s.email
+            )
+            .map((s) => ({
+              socio_id: s.id,
+              email: s.email!,
+              nombre: s.nombre,
+              apellido: s.apellido,
+            }))
+          if (recipients.length > 0) {
+            const editorSocio = sociosActivos.find((s) => s.usuario_id === user?.id)
+            const editorName = editorSocio ? `${editorSocio.nombre} ${editorSocio.apellido}` : 'Un miembro'
+            void sendEmailNotificationFromClient('calendario_reunion_nueva', recipients, {
+              type: 'calendario_reunion_nueva',
+              reunion_titulo: payload.titulo,
+              reunion_fecha: payload.fechaInicio,
+              reunion_fecha_fin: payload.fechaFin,
+              reunion_lugar: payload.lugar || null,
+              reunion_alcance: 'personalizada',
+              creado_por_nombre: editorName,
+              participacion: null,
+            })
+          }
+        }
+
         toast.success('Reunión actualizada')
         return true
       } catch {
@@ -682,7 +806,7 @@ export function useReuniones() {
         setEditando(false)
       }
     },
-    [puedeCrear]
+    [puedeCrear, reuniones, sociosActivos, user?.id]
   )
 
   // ── Eliminar reunión ──────────────────────────────────────

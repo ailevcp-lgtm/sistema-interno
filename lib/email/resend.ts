@@ -20,5 +20,5 @@ export function getFromEmail(): string {
 }
 
 export function getAppUrl(): string {
-  return process.env.NEXT_PUBLIC_APP_URL || 'https://sistema.aile.org.ar'
+  return process.env.NEXT_PUBLIC_APP_URL || 'https://interno.aile.com.ar'
 }

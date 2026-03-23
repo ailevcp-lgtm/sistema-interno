@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import {
   Users2,
   Plus,
@@ -22,6 +22,7 @@ import {
   Trash2,
 } from 'lucide-react'
 import { cn, formatDate, formatDateTime } from '@/lib/utils'
+import { supabase } from '@/lib/supabase'
 import { useRequireAuth } from '@/hooks/useAuth'
 import {
   useReuniones,
@@ -362,6 +363,9 @@ export default function ReunionesPage() {
             const ok = await editarReunion(reunionEditando.id, payload)
             if (ok) setReunionEditando(null)
           }}
+          sociosActivos={sociosActivos}
+          esAdmin={esAdmin}
+          miDireccion={miDireccion}
         />
       )}
 
@@ -802,7 +806,9 @@ function DialogNuevaReunion({
       fechaInicio: fechaInicioISO,
       fechaFin: fechaFinISO,
       lugar: lugar.trim() || undefined,
-      usuarioIdsInvolucrados: Array.from(involucrados),
+      usuarioIdsInvolucrados: sociosActivos
+        .filter((s) => involucrados.has(s.id) && s.usuario_id)
+        .map((s) => s.usuario_id),
       crearTarea,
     })
   }
@@ -924,7 +930,7 @@ function DialogNuevaReunion({
             </p>
             <div className="max-h-48 overflow-y-auto space-y-1 border border-border rounded-md p-2">
               {sociosActivos.map((s) => {
-                const checked = involucrados.has(s.usuario_id)
+                const checked = involucrados.has(s.id)
                 const dir = directionFromRoleName(s.rol_aile)
                 if (!esAdmin && dir !== null && dir !== direccion) return null
                 return (
@@ -937,8 +943,8 @@ function DialogNuevaReunion({
                     onClick={() => {
                       setInvolucrados((prev) => {
                         const next = new Set(prev)
-                        if (next.has(s.usuario_id)) next.delete(s.usuario_id)
-                        else next.add(s.usuario_id)
+                        if (next.has(s.id)) next.delete(s.id)
+                        else next.add(s.id)
                         return next
                       })
                     }}
@@ -996,9 +1002,18 @@ interface DialogEditarReunionProps {
   editando: boolean
   onCerrar: () => void
   onGuardar: (payload: EditarReunionPayload) => Promise<void>
+  sociosActivos: Array<{
+    id: string
+    usuario_id: string
+    nombre: string
+    apellido: string
+    rol_aile?: string | null
+  }>
+  esAdmin: boolean
+  miDireccion: DireccionBase | null
 }
 
-function DialogEditarReunion({ reunion, editando, onCerrar, onGuardar }: DialogEditarReunionProps) {
+function DialogEditarReunion({ reunion, editando, onCerrar, onGuardar, sociosActivos, esAdmin, miDireccion }: DialogEditarReunionProps) {
   const fechaLocal = reunion.fecha_inicio.split('T')[0]
   const horaInicioLocal = reunion.fecha_inicio.split('T')[1]?.slice(0, 5) || '09:00'
   const horaFinLocal = reunion.fecha_fin.split('T')[1]?.slice(0, 5) || '10:00'
@@ -1009,6 +1024,28 @@ function DialogEditarReunion({ reunion, editando, onCerrar, onGuardar }: DialogE
   const [fecha, setFecha] = useState(fechaLocal)
   const [horaInicio, setHoraInicio] = useState(horaInicioLocal)
   const [horaFin, setHoraFin] = useState(horaFinLocal)
+  const [involucrados, setInvolucrados] = useState<Set<string>>(new Set())
+  const [loadingParticipants, setLoadingParticipants] = useState(false)
+
+  useEffect(() => {
+    if (!reunion.calendario_reunion_id) return
+    setLoadingParticipants(true)
+    supabase
+      .from('reuniones_calendario_participantes')
+      .select('usuario_id')
+      .eq('reunion_id', reunion.calendario_reunion_id)
+      .then(({ data }) => {
+        if (data) {
+          // Convertir usuario_id → socio id para usar como clave del Set
+          const usuarioIds = new Set(data.map((p: { usuario_id: string }) => p.usuario_id).filter(Boolean))
+          const socioIds = sociosActivos
+            .filter((s) => s.usuario_id && usuarioIds.has(s.usuario_id))
+            .map((s) => s.id)
+          setInvolucrados(new Set(socioIds))
+        }
+        setLoadingParticipants(false)
+      })
+  }, [reunion.calendario_reunion_id, sociosActivos])
 
   async function handleSubmit() {
     if (!titulo.trim()) {
@@ -1031,6 +1068,9 @@ function DialogEditarReunion({ reunion, editando, onCerrar, onGuardar }: DialogE
       fechaInicio: fechaInicioISO,
       fechaFin: fechaFinISO,
       lugar: lugar.trim() || undefined,
+      usuarioIdsInvolucrados: sociosActivos
+        .filter((s) => involucrados.has(s.id) && s.usuario_id)
+        .map((s) => s.usuario_id),
     })
   }
 
@@ -1078,6 +1118,50 @@ function DialogEditarReunion({ reunion, editando, onCerrar, onGuardar }: DialogE
           <div className="space-y-2">
             <Label>Lugar (opcional)</Label>
             <Input value={lugar} onChange={(e) => setLugar(e.target.value)} placeholder="Ej: Sala virtual, Google Meet, etc." />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Invitar al calendario (opcional)</Label>
+            <p className="text-xs text-muted-foreground">Estos miembros verán la reunión en su calendario</p>
+            {loadingParticipants ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Cargando participantes...
+              </div>
+            ) : (
+              <div className="max-h-48 overflow-y-auto space-y-1 border border-border rounded-md p-2">
+                {sociosActivos.map((s) => {
+                  const checked = involucrados.has(s.id)
+                  const dir = directionFromRoleName(s.rol_aile)
+                  if (!esAdmin && dir !== null && dir !== miDireccion) return null
+                  return (
+                    <div
+                      key={s.id}
+                      className={cn(
+                        'flex items-center gap-2 p-2 rounded cursor-pointer hover:bg-muted/50',
+                        checked && 'bg-primary/5'
+                      )}
+                      onClick={() => {
+                        setInvolucrados((prev) => {
+                          const next = new Set(prev)
+                          if (next.has(s.id)) next.delete(s.id)
+                          else next.add(s.id)
+                          return next
+                        })
+                      }}
+                    >
+                      <Checkbox checked={checked} className="pointer-events-none" />
+                      <span className="text-sm text-foreground">
+                        {s.nombre} {s.apellido}
+                      </span>
+                      {s.rol_aile && (
+                        <span className="text-xs text-muted-foreground ml-auto">{s.rol_aile}</span>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </div>
         </div>
 
