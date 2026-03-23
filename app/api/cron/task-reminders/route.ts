@@ -4,7 +4,7 @@ import { runDueTaskReminderEmails } from '@/lib/email/task-reminders'
 export const dynamic = 'force-dynamic'
 
 function isAuthorizedCronRequest(request: NextRequest): boolean {
-  const cronSecret = process.env.CRON_SECRET
+  const cronSecret = process.env.CRON_SECRET?.trim()
   const authHeader = request.headers.get('authorization')
 
   if (cronSecret) {
@@ -20,6 +20,14 @@ function isAuthorizedCronRequest(request: NextRequest): boolean {
 }
 
 export async function GET(request: NextRequest) {
+  if (process.env.NODE_ENV === 'production' && !process.env.CRON_SECRET?.trim()) {
+    console.error('CRON_SECRET no esta configurado para /api/cron/task-reminders')
+    return NextResponse.json(
+      { error: 'Cron no configurado' },
+      { status: 503 }
+    )
+  }
+
   if (!isAuthorizedCronRequest(request)) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
   }

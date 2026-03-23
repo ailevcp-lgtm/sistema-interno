@@ -285,6 +285,11 @@ export interface PagoSocio extends MovimientoExtended {
   cuota_aplicaciones: CuotaAplicacion[]
 }
 
+function getCuotaRemainingAmount(cuota: Pick<Cuota, 'monto_esperado' | 'monto_pagado'>): number {
+  const remaining = Number(cuota.monto_esperado) - Number(cuota.monto_pagado)
+  return Math.max(Math.round(remaining * 100) / 100, 0)
+}
+
 export function useCuotas(socioId?: string) {
   const [cuotas, setCuotas] = useState<(Cuota & { socio?: Socio })[]>([])
   const [loading, setLoading] = useState(true)
@@ -447,15 +452,15 @@ export function useCuotas(socioId?: string) {
 
   // Summary stats
   const summary = useMemo(() => {
-    const relevant = filtered.length > 0 ? cuotas : []
+    const relevant = filtered
     const pagadas = relevant.filter(c => c.estado === 'pagada')
     const pendientes = relevant.filter(c => c.estado === 'pendiente' || c.estado === 'parcial')
     const vencidas = relevant.filter(c => c.estado === 'vencida')
 
     const totalRecaudado = pagadas.reduce((sum, c) => sum + c.monto_pagado, 0) +
       relevant.filter(c => c.estado === 'parcial').reduce((sum, c) => sum + c.monto_pagado, 0)
-    const totalPendiente = pendientes.reduce((sum, c) => sum + (c.monto_esperado - c.monto_pagado), 0)
-    const totalVencido = vencidas.reduce((sum, c) => sum + c.monto_esperado, 0)
+    const totalPendiente = pendientes.reduce((sum, c) => sum + getCuotaRemainingAmount(c), 0)
+    const totalVencido = vencidas.reduce((sum, c) => sum + getCuotaRemainingAmount(c), 0)
     const totalEsperado = relevant.reduce((sum, c) => sum + c.monto_esperado, 0)
     const porcentajeCobranza = totalEsperado > 0 ? Math.round((totalRecaudado / totalEsperado) * 100) : 0
 
@@ -468,7 +473,7 @@ export function useCuotas(socioId?: string) {
       totalVencido,
       porcentajeCobranza,
     }
-  }, [cuotas, filtered.length])
+  }, [filtered])
 
   // Available periodos for filter
   const periodos = useMemo(() => {
@@ -497,13 +502,25 @@ export function useCuotas(socioId?: string) {
     }
 
     // 1. Obtener cuotas seleccionadas
-    const cuotasSeleccionadas = cuotas.filter(c => cuotaIds.includes(c.id))
+    const cuotasSeleccionadas = cuotas
+      .filter(c => c.socio_id === socioId && cuotaIds.includes(c.id))
+      .map((cuota) => ({
+        ...cuota,
+        monto_restante: getCuotaRemainingAmount(cuota),
+      }))
+
     if (cuotasSeleccionadas.length === 0) {
       toast.error('No se seleccionaron cuotas')
       return
     }
 
-    const subtotal = cuotasSeleccionadas.reduce((sum, c) => sum + c.monto_esperado, 0)
+    const cuotasSinSaldo = cuotasSeleccionadas.filter((cuota) => cuota.monto_restante <= 0)
+    if (cuotasSinSaldo.length > 0) {
+      toast.error('Hay cuotas seleccionadas que ya no tienen saldo pendiente')
+      return
+    }
+
+    const subtotal = cuotasSeleccionadas.reduce((sum, c) => sum + c.monto_restante, 0)
 
     // 2. Si hay promoción, calcular descuento
     let descuento = 0
@@ -536,64 +553,93 @@ export function useCuotas(socioId?: string) {
       ? `Pago cuotas ${socioNombre}: ${periodosList}. ${notas}`
       : `Pago cuotas ${socioNombre}: ${periodosList}`
 
-    // 5. INSERT movimiento
-    const { data: movimiento, error: movError } = await supabase
-      .from('movimientos')
-      .insert({
-        tipo: 'ingreso',
-        categoria_id: cuotasCategoriaId,
-        cuenta_id: cuentaId,
-        monto: total,
-        fecha,
-        descripcion,
-        socio_id: socioId,
-        periodo: cuotasSeleccionadas[0]?.periodo || '',
-        anulado: false,
+    let movimientoId: string | null = null
+    let errorMessage = 'Error al registrar el pago de cuotas'
+
+    const rollbackPago = async () => {
+      if (!movimientoId) return
+
+      const cleanupSteps = await Promise.all([
+        supabase.from('movimiento_promocion_cuotas').delete().eq('movimiento_id', movimientoId),
+        supabase.from('cuota_aplicaciones').delete().eq('movimiento_id', movimientoId),
+        supabase.from('movimientos').delete().eq('id', movimientoId),
+      ])
+
+      cleanupSteps.forEach((result, index) => {
+        if (result.error) {
+          console.error(`Error cleaning payment step ${index + 1}:`, result.error)
+        }
       })
-      .select()
-      .single()
-
-    if (movError || !movimiento) {
-      console.error('Error creating movimiento:', movError)
-      toast.error('Error al crear el movimiento de pago')
-      throw movError
     }
 
-    // 6. INSERT cuota_aplicaciones
-    const aplicaciones = cuotasSeleccionadas.map(c => ({
-      movimiento_id: movimiento.id,
-      cuota_id: c.id,
-      monto_aplicado: c.monto_esperado,
-    }))
-
-    const { error: appError } = await supabase
-      .from('cuota_aplicaciones')
-      .insert(aplicaciones)
-
-    if (appError) {
-      console.error('Error creating cuota_aplicaciones:', appError)
-      toast.error('Error al aplicar pago a cuotas')
-      throw appError
-    }
-
-    // 7. Si hay promo, INSERT movimiento_promocion_cuotas
-    if (promocionId && descuento > 0) {
-      const { error: promoError } = await supabase
-        .from('movimiento_promocion_cuotas')
+    try {
+      // 5. INSERT movimiento
+      const { data: movimiento, error: movError } = await supabase
+        .from('movimientos')
         .insert({
-          movimiento_id: movimiento.id,
-          promocion_id: promocionId,
-          descuento_monto: descuento,
-          snapshot: promoSnapshot,
+          tipo: 'ingreso',
+          categoria_id: cuotasCategoriaId,
+          cuenta_id: cuentaId,
+          monto: total,
+          fecha,
+          descripcion,
+          socio_id: socioId,
+          periodo: cuotasSeleccionadas[0]?.periodo || '',
+          anulado: false,
         })
+        .select()
+        .single()
 
-      if (promoError) {
-        console.error('Error creating movimiento_promocion:', promoError)
+      if (movError || !movimiento) {
+        console.error('Error creating movimiento:', movError)
+        errorMessage = 'Error al crear el movimiento de pago'
+        throw movError || new Error('No se pudo crear el movimiento')
       }
-    }
 
-    toast.success('Pago registrado correctamente')
-    await fetchCuotas()
+      movimientoId = movimiento.id
+
+      // 6. INSERT cuota_aplicaciones
+      const aplicaciones = cuotasSeleccionadas.map(c => ({
+        movimiento_id: movimiento.id,
+        cuota_id: c.id,
+        monto_aplicado: c.monto_restante,
+      }))
+
+      const { error: appError } = await supabase
+        .from('cuota_aplicaciones')
+        .insert(aplicaciones)
+
+      if (appError) {
+        console.error('Error creating cuota_aplicaciones:', appError)
+        errorMessage = 'Error al aplicar el pago a las cuotas seleccionadas'
+        throw appError
+      }
+
+      // 7. Si hay promo, INSERT movimiento_promocion_cuotas
+      if (promocionId && descuento > 0) {
+        const { error: promoError } = await supabase
+          .from('movimiento_promocion_cuotas')
+          .insert({
+            movimiento_id: movimiento.id,
+            promocion_id: promocionId,
+            descuento_monto: descuento,
+            snapshot: promoSnapshot,
+          })
+
+        if (promoError) {
+          console.error('Error creating movimiento_promocion:', promoError)
+          errorMessage = 'Error al registrar el descuento promocional'
+          throw promoError
+        }
+      }
+
+      toast.success('Pago registrado correctamente')
+      await fetchCuotas()
+    } catch (error) {
+      await rollbackPago()
+      toast.error(errorMessage)
+      throw error
+    }
   }, [cuotas, cuotasCategoriaId, promociones, fetchCuotas])
 
   // ── Anular pago (soft-delete) ──

@@ -1,6 +1,6 @@
 "use client"
 
-import { Download, ChevronDown, ChevronRight, BookOpen, Scale, Gavel, BarChart2, Plus, FileText, Upload, Settings, Eye, Bell, Pencil, Trash2, Loader2 } from "lucide-react"
+import { Download, ChevronDown, ChevronRight, BookOpen, Scale, Gavel, BarChart2, Plus, FileText, Upload, Eye, Bell, Pencil, Trash2, Loader2 } from "lucide-react"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -8,13 +8,16 @@ import { useState, useEffect, useCallback } from "react"
 import { cn } from "@/lib/utils"
 import { useDocumentos } from "@/hooks/useDocumentos"
 import { formatDate } from "@/lib/utils"
-import type { ArticuloEstatuto, Resolucion, Balance } from "@/lib/types"
+import type { ArticuloEstatuto, Resolucion, Balance, TipoResolucion } from "@/lib/types"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { useAuth } from "@/hooks/useAuth"
 import { useResumeRefresh } from "@/hooks/useResumeRefresh"
 import { BalanceUploadDialog, getDocumentStoragePathFromPublicUrl } from "@/components/aile/balance-upload-dialog"
 import { supabase } from "@/lib/supabase"
+import { ResolutionEditor } from "@/components/aile/resolution-editor"
+import { sanitizeRichHtml } from "@/lib/html-sanitizer"
+import { toast } from "sonner"
 import {
   Tooltip,
   TooltipContent,
@@ -63,8 +66,17 @@ export function DocumentosPage() {
   const tabFromUrl = searchParams.get("tab")
   const [activeTab, setActiveTab] = useState<DocTab>("estatuto")
   const [expandedArticle, setExpandedArticle] = useState<string | null>(null)
-  const { getEstatuto, getResoluciones, getBalances, getConfig, deleteBalance, notifyBalanceUpload } = useDocumentos()
-  const { hasPermission } = useAuth()
+  const {
+    getEstatuto,
+    getResoluciones,
+    getBalances,
+    getConfig,
+    deleteBalance,
+    notifyBalanceUpload,
+    createResolucion,
+    updateResolucion,
+  } = useDocumentos()
+  const { user, hasPermission } = useAuth()
 
   const [articulos, setArticulos] = useState<ArticuloEstatuto[]>([])
   const [resoluciones, setResoluciones] = useState<Resolucion[]>([])
@@ -73,6 +85,10 @@ export function DocumentosPage() {
   const [tabLoading, setTabLoading] = useState(true)
   const [estatutoPdfUrl, setEstatutoPdfUrl] = useState<string | null>(null)
   const [selectedNorma, setSelectedNorma] = useState<Resolucion | null>(null)
+  const [resolutionEditorOpen, setResolutionEditorOpen] = useState(false)
+  const [editingResolution, setEditingResolution] = useState<Resolucion | null>(null)
+  const [resolutionEditorInitialData, setResolutionEditorInitialData] = useState<Partial<Resolucion> | null>(null)
+  const [draftResolutionType, setDraftResolutionType] = useState<TipoResolucion>("asamblea")
   const [isBalanceUploadOpen, setIsBalanceUploadOpen] = useState(false)
   const [editingBalance, setEditingBalance] = useState<Balance | null>(null)
   const [notifyingBalanceId, setNotifyingBalanceId] = useState<string | null>(null)
@@ -81,7 +97,12 @@ export function DocumentosPage() {
   const canCreateBalance = hasPermission("balances", "crear")
   const canEditBalance = hasPermission("balances", "editar")
   const canDeleteBalance = hasPermission("balances", "eliminar")
+  const canCreateResolution = hasPermission("resoluciones", "crear")
+  const canEditResolution = hasPermission("resoluciones", "editar")
   const canNotifyBalance = canCreateBalance || canEditBalance
+  const showHeaderActions =
+    (activeTab === "balances" && canCreateBalance) ||
+    ((activeTab === "resoluciones" || activeTab === "decretos") && canCreateResolution)
 
   const loadData = useCallback(async () => {
     try {
@@ -138,6 +159,39 @@ export function DocumentosPage() {
     setSelectedNorma(norma)
   }
 
+  const handleOpenResolutionEditor = (type: TipoResolucion, resolucion?: Resolucion) => {
+    setDraftResolutionType(type)
+    setEditingResolution(resolucion || null)
+    setResolutionEditorInitialData(
+      resolucion || {
+        tipo: type,
+        estado: "borrador",
+      }
+    )
+    setResolutionEditorOpen(true)
+  }
+
+  const handleSaveResolution = async (data: Partial<Resolucion>) => {
+    if (editingResolution) {
+      await updateResolucion(editingResolution.id, data)
+    } else {
+      if (!user?.id) {
+        toast.error("No se pudo identificar al usuario que crea la resolución")
+        return
+      }
+
+      await createResolucion({
+        ...data,
+        creado_por: user.id,
+      } as Omit<Resolucion, "id" | "created_at">)
+    }
+
+    setResolutionEditorOpen(false)
+    setEditingResolution(null)
+    setResolutionEditorInitialData(null)
+    await loadData()
+  }
+
   const formatNormaNumero = (norma: Resolucion) => {
     if (norma.tipo === "decreto") {
       return `Dec. CD ${String(norma.numero).padStart(3, "0")}/${norma.anio}`
@@ -189,23 +243,17 @@ export function DocumentosPage() {
           <h1 className="text-xl lg:text-2xl font-bold text-foreground">Documentos</h1>
           <p className="text-sm text-muted-foreground mt-0.5">Estatuto, resoluciones, decretos y balances</p>
         </div>
-        {canCreateBalance && (
+        {showHeaderActions && (
           <div className="flex gap-2">
-            {activeTab === "estatuto" && (
-              <Link href="/admin/estatuto">
-                <Button size="sm" variant="outline" className="gap-2">
-                  <Settings className="w-4 h-4" />
-                  <span className="hidden sm:inline">Gestionar Estatuto</span>
-                </Button>
-              </Link>
-            )}
-            {(activeTab === "resoluciones" || activeTab === "decretos") && (
-              <Link href="/admin/resoluciones">
-                <Button size="sm" className="gap-2">
-                  <Plus className="w-4 h-4" />
-                  <span className="hidden sm:inline">Nueva Resolución</span>
-                </Button>
-              </Link>
+            {(activeTab === "resoluciones" || activeTab === "decretos") && canCreateResolution && (
+              <Button
+                size="sm"
+                className="gap-2"
+                onClick={() => handleOpenResolutionEditor(activeTab === "decretos" ? "decreto" : "asamblea")}
+              >
+                <Plus className="w-4 h-4" />
+                <span className="hidden sm:inline">{activeTab === "decretos" ? "Nuevo Decreto" : "Nueva Resolución"}</span>
+              </Button>
             )}
             {activeTab === "balances" && (
               <Button
@@ -360,6 +408,18 @@ export function DocumentosPage() {
                                         <TooltipContent><p>Ver texto completo</p></TooltipContent>
                                       </Tooltip>
                                     </TooltipProvider>
+                                    {canEditResolution && (
+                                      <TooltipProvider>
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <Button onClick={() => handleOpenResolutionEditor("asamblea", res)} size="sm" variant="ghost" className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground">
+                                              <Pencil className="w-4 h-4" />
+                                            </Button>
+                                          </TooltipTrigger>
+                                          <TooltipContent><p>Editar resolución</p></TooltipContent>
+                                        </Tooltip>
+                                      </TooltipProvider>
+                                    )}
                                     {res.archivo_url && (
                                       <TooltipProvider>
                                         <Tooltip>
@@ -410,6 +470,11 @@ export function DocumentosPage() {
                                 <Button onClick={() => handleOpenNorma(res)} size="sm" variant="link" className="h-auto p-0 mt-2 text-[#6314a7]">
                                   Ver texto completo
                                 </Button>
+                                {canEditResolution && (
+                                  <Button onClick={() => handleOpenResolutionEditor("asamblea", res)} size="sm" variant="link" className="h-auto p-0 mt-1 text-[#6314a7]">
+                                    Editar resolución
+                                  </Button>
+                                )}
                               </div>
                               {res.archivo_url && (
                                 <Button onClick={() => handleDownload(res.archivo_url, `Resolucion_${res.numero}_${res.anio}.pdf`)} size="sm" variant="ghost" className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground shrink-0">
@@ -483,6 +548,18 @@ export function DocumentosPage() {
                                         <TooltipContent><p>Ver texto completo</p></TooltipContent>
                                       </Tooltip>
                                     </TooltipProvider>
+                                    {canEditResolution && (
+                                      <TooltipProvider>
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <Button onClick={() => handleOpenResolutionEditor("decreto", dec)} size="sm" variant="ghost" className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground">
+                                              <Pencil className="w-4 h-4" />
+                                            </Button>
+                                          </TooltipTrigger>
+                                          <TooltipContent><p>Editar decreto</p></TooltipContent>
+                                        </Tooltip>
+                                      </TooltipProvider>
+                                    )}
                                     {dec.archivo_url && (
                                       <TooltipProvider>
                                         <Tooltip>
@@ -532,6 +609,11 @@ export function DocumentosPage() {
                                 <Button onClick={() => handleOpenNorma(dec)} size="sm" variant="link" className="h-auto p-0 mt-2 text-[#6314a7]">
                                   Ver texto completo
                                 </Button>
+                                {canEditResolution && (
+                                  <Button onClick={() => handleOpenResolutionEditor("decreto", dec)} size="sm" variant="link" className="h-auto p-0 mt-1 text-[#6314a7]">
+                                    Editar decreto
+                                  </Button>
+                                )}
                               </div>
                               {dec.archivo_url && (
                                 <Button onClick={() => handleDownload(dec.archivo_url, `Decreto_${dec.numero}_${dec.anio}.pdf`)} size="sm" variant="ghost" className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground shrink-0">
@@ -677,15 +759,29 @@ export function DocumentosPage() {
             {selectedNorma?.contenido ? (
               <div
                 className="prose prose-sm max-w-none break-words dark:prose-invert"
-                dangerouslySetInnerHTML={{ __html: selectedNorma.contenido }}
+                dangerouslySetInnerHTML={{ __html: sanitizeRichHtml(selectedNorma.contenido) }}
               />
             ) : (
               <p className="text-sm text-muted-foreground">Esta norma no tiene texto cargado.</p>
             )}
           </div>
 
-          {selectedNorma?.archivo_url && (
-            <div className="flex justify-end">
+          <div className="flex flex-wrap justify-end gap-2">
+            {canEditResolution && selectedNorma && (
+              <Button
+                variant="outline"
+                className="gap-2"
+                onClick={() => {
+                  const tipo = selectedNorma.tipo === "decreto" ? "decreto" : "asamblea"
+                  setSelectedNorma(null)
+                  handleOpenResolutionEditor(tipo, selectedNorma)
+                }}
+              >
+                <Pencil className="w-4 h-4" />
+                Editar
+              </Button>
+            )}
+            {selectedNorma?.archivo_url && (
               <Button
                 variant="outline"
                 className="gap-2"
@@ -694,8 +790,30 @@ export function DocumentosPage() {
                 <Download className="w-4 h-4" />
                 Descargar PDF
               </Button>
-            </div>
-          )}
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={resolutionEditorOpen} onOpenChange={(open) => {
+        setResolutionEditorOpen(open)
+        if (!open) {
+          setEditingResolution(null)
+          setResolutionEditorInitialData(null)
+        }
+      }}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-5xl p-0">
+          <ResolutionEditor
+            key={`${editingResolution?.id || "new"}-${draftResolutionType}`}
+            initialData={resolutionEditorInitialData || undefined}
+            defaultType={draftResolutionType}
+            onCancel={() => {
+              setResolutionEditorOpen(false)
+              setEditingResolution(null)
+              setResolutionEditorInitialData(null)
+            }}
+            onSave={handleSaveResolution}
+          />
         </DialogContent>
       </Dialog>
     </div>

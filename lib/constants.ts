@@ -38,6 +38,7 @@ export const PERMISSION_RESOURCES: Recurso[] = [
   'balances',
   'logs',
   'reuniones',
+  'propuestas',
 ]
 
 export const PERMISSION_ACTIONS: Accion[] = ['ver', 'crear', 'editar', 'eliminar', 'aprobar']
@@ -59,6 +60,7 @@ export const RECURSO_LABELS: Record<Recurso, string> = {
   balances: 'Balances',
   logs: 'Logs',
   reuniones: 'Reuniones',
+  propuestas: 'Propuestas',
 }
 
 export const ACCION_LABELS: Record<Accion, string> = {
@@ -338,7 +340,7 @@ export const PERMISSIONS: Record<Recurso, Record<Accion, Rol[]>> = {
     aprobar: ['comision_directiva', 'admin'],
   },
   documentos: {
-    ver: ['comision_directiva', 'revisor_cuentas', 'admin'],
+    ver: ['socio', 'comision_directiva', 'revisor_cuentas', 'admin'],
     crear: ['comision_directiva', 'admin'],
     editar: ['comision_directiva', 'admin'],
     eliminar: ['admin'],
@@ -352,21 +354,21 @@ export const PERMISSIONS: Record<Recurso, Record<Accion, Rol[]>> = {
     aprobar: [],
   },
   estatuto: {
-    ver: ['comision_directiva', 'revisor_cuentas', 'admin'],
+    ver: ['socio', 'comision_directiva', 'revisor_cuentas', 'admin'],
     crear: [],
     editar: ['admin'],
     eliminar: [],
     aprobar: [],
   },
   resoluciones: {
-    ver: ['comision_directiva', 'revisor_cuentas', 'admin'],
+    ver: ['socio', 'comision_directiva', 'revisor_cuentas', 'admin'],
     crear: ['comision_directiva', 'admin'],
     editar: ['comision_directiva', 'admin'],
     eliminar: ['admin'],
     aprobar: [],
   },
   balances: {
-    ver: ['comision_directiva', 'revisor_cuentas', 'admin'],
+    ver: ['socio', 'comision_directiva', 'revisor_cuentas', 'admin'],
     crear: ['comision_directiva', 'admin'],
     editar: ['comision_directiva', 'admin'],
     eliminar: ['admin'],
@@ -381,6 +383,13 @@ export const PERMISSIONS: Record<Recurso, Record<Accion, Rol[]>> = {
   },
   reuniones: {
     ver: ['socio', 'comision_directiva', 'revisor_cuentas', 'admin'],
+    crear: ['comision_directiva', 'admin'],
+    editar: ['comision_directiva', 'admin'],
+    eliminar: ['admin'],
+    aprobar: [],
+  },
+  propuestas: {
+    ver: ['comision_directiva', 'admin'],
     crear: ['comision_directiva', 'admin'],
     editar: ['comision_directiva', 'admin'],
     eliminar: ['admin'],
@@ -420,11 +429,13 @@ export const ESTADO_CUOTA_COLORS: Record<string, { bg: string; text: string }> =
 export const ESTADO_RESOLUCION_LABELS: Record<string, string> = {
   vigente: 'Vigente',
   derogada: 'Derogada',
+  borrador: 'Borrador',
 }
 
 export const ESTADO_RESOLUCION_COLORS: Record<string, { bg: string; text: string }> = {
   vigente: { bg: 'bg-[#6314a7]/20', text: 'text-[#9341bf]' },
   derogada: { bg: 'bg-gray-500/20', text: 'text-gray-400' },
+  borrador: { bg: 'bg-gray-500/20', text: 'text-gray-400' },
 }
 
 // Estados de balances

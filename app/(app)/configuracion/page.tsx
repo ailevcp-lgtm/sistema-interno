@@ -10,7 +10,7 @@ import {
   Save,
   Search,
 } from 'lucide-react'
-import { cn, formatARS, formatDateTime } from '@/lib/utils'
+import { cn, formatARS, formatDateTime, getCurrentPeriodo } from '@/lib/utils'
 import { useRequirePermission } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
 import {
@@ -451,6 +451,7 @@ function CuotasTab() {
   const [diaVencimiento, setDiaVencimiento] = useState(10)
   const [loadingConfig, setLoadingConfig] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
+  const [isGeneratingCuotas, setIsGeneratingCuotas] = useState(false)
 
   const loadConfig = useCallback(async () => {
     try {
@@ -498,8 +499,9 @@ function CuotasTab() {
   }
 
   const handleGenerarCuotas = async () => {
+    setIsGeneratingCuotas(true)
     try {
-      const periodo = new Date().toISOString().substring(0, 7) // YYYY-MM
+      const periodo = getCurrentPeriodo()
 
       const { data: socios, error: sociosError } = await supabase
         .from('socios')
@@ -511,7 +513,28 @@ function CuotasTab() {
         return
       }
 
-      const cuotas = socios.map(s => ({
+      const socioIds = socios.map((s) => s.id)
+
+      const { data: cuotasExistentes, error: cuotasExistentesError } = await supabase
+        .from('cuotas')
+        .select('socio_id')
+        .eq('periodo', periodo)
+        .in('socio_id', socioIds)
+
+      if (cuotasExistentesError) {
+        toast.error('No se pudieron verificar cuotas existentes')
+        return
+      }
+
+      const sociosConCuota = new Set((cuotasExistentes || []).map((cuota) => cuota.socio_id))
+      const sociosPendientes = socios.filter((s) => !sociosConCuota.has(s.id))
+
+      if (sociosPendientes.length === 0) {
+        toast.info(`Las cuotas de ${periodo} ya estaban generadas para todos los socios activos`)
+        return
+      }
+
+      const cuotas = sociosPendientes.map((s) => ({
         socio_id: s.id,
         periodo,
         monto_esperado: montoCuota,
@@ -526,9 +549,15 @@ function CuotasTab() {
         return
       }
 
-      toast.success(`Cuotas generadas para ${socios.length} socios`)
+      if (sociosConCuota.size > 0) {
+        toast.success(`Cuotas generadas para ${sociosPendientes.length} socios. ${sociosConCuota.size} ya existían para ${periodo}.`)
+      } else {
+        toast.success(`Cuotas generadas para ${sociosPendientes.length} socios`)
+      }
     } catch {
       toast.error('Error al generar cuotas')
+    } finally {
+      setIsGeneratingCuotas(false)
     }
   }
 
@@ -585,8 +614,9 @@ function CuotasTab() {
           <Button
             onClick={handleGenerarCuotas}
             variant="outline"
+            disabled={isGeneratingCuotas}
           >
-            Generar cuotas del mes
+            {isGeneratingCuotas ? 'Generando cuotas...' : 'Generar cuotas del mes'}
           </Button>
         </div>
       </CardContent>

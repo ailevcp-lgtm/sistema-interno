@@ -38,6 +38,7 @@ function isPublicPath(pathname: string): boolean {
     || pathname.startsWith('/_next')
     || pathname.startsWith('/api')
     || pathname.startsWith('/images')
+    || pathname.startsWith('/p/')
     || PUBLIC_FILE_PATTERN.test(pathname)
   )
 }
@@ -49,6 +50,10 @@ function buildLoginRedirect(request: NextRequest, pathname: string, reason?: str
     loginUrl.searchParams.set('error', reason)
   }
   return NextResponse.redirect(loginUrl)
+}
+
+function buildClearCookiesRedirect(request: NextRequest): NextResponse {
+  return NextResponse.redirect(new URL('/auth/clear-cookies', request.url))
 }
 
 function copyResponseCookies(source: NextResponse, target: NextResponse) {
@@ -168,17 +173,22 @@ async function ensureAuthorizedSocio(
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
+  const isLoginPath = pathname === '/login'
   const hasSupabaseAuthCookie = request.cookies
     .getAll()
     .some((cookie) => cookie.name.startsWith('sb-') && cookie.name.includes('auth-token'))
 
-  if (isPublicPath(pathname)) {
+  if (!isLoginPath && isPublicPath(pathname)) {
     return NextResponse.next()
   }
 
   // Sin cookie de auth no hay nada que validar contra Supabase:
   // respondemos inmediato para evitar requests colgadas por red.
   if (!hasSupabaseAuthCookie) {
+    if (isLoginPath) {
+      return NextResponse.next()
+    }
+
     return buildLoginRedirect(request, pathname)
   }
 
@@ -206,9 +216,18 @@ export async function proxy(request: NextRequest) {
 
       if (!authorized) {
         await supabase.auth.signOut()
-        const unauthorizedRedirect = buildLoginRedirect(request, pathname, 'unauthorized')
-        copyResponseCookies(response, unauthorizedRedirect)
-        return unauthorizedRedirect
+        const nextResponse = isLoginPath
+          ? buildClearCookiesRedirect(request)
+          : buildLoginRedirect(request, pathname, 'unauthorized')
+
+        copyResponseCookies(response, nextResponse)
+        return nextResponse
+      }
+
+      if (isLoginPath) {
+        const dashboardRedirect = NextResponse.redirect(new URL('/dashboard', request.url))
+        copyResponseCookies(response, dashboardRedirect)
+        return dashboardRedirect
       }
 
       return response
@@ -221,7 +240,18 @@ export async function proxy(request: NextRequest) {
     } else {
       console.error('Proxy auth check failed:', error)
     }
+
+    if (isLoginPath) {
+      return NextResponse.next()
+    }
+
     return response
+  }
+
+  if (isLoginPath) {
+    const clearCookiesRedirect = buildClearCookiesRedirect(request)
+    copyResponseCookies(response, clearCookiesRedirect)
+    return clearCookiesRedirect
   }
 
   return response

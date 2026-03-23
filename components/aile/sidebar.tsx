@@ -15,6 +15,7 @@ import {
   ReceiptText,
   PanelLeftClose,
   PanelLeftOpen,
+  Briefcase,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/hooks/useAuth"
@@ -30,6 +31,7 @@ const navItems = [
   { id: "finanzas", label: "Finanzas", icon: BarChart2, recurso: "finanzas" as const },
   { id: "tesoreria", label: "Tesorería", icon: Landmark, recurso: "tesoreria" as const },
   { id: "reintegros", label: "Reintegros", icon: ReceiptText, recurso: "reintegros" as const },
+  { id: "propuestas", label: "Propuestas", icon: Briefcase, recurso: "propuestas" as const },
   { id: "documentos", label: "Documentos", icon: FileText, recurso: "documentos" as const },
   { id: "configuracion", label: "Ajustes", icon: Settings, recurso: "configuracion" as const },
 ] as const

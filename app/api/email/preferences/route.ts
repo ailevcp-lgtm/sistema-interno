@@ -1,64 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
-import { createSupabaseRouteClient } from '@/lib/supabase-server'
-
-function getServiceSupabase() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-  if (!url || !serviceKey) {
-    throw new Error('Faltan variables de entorno de Supabase')
-  }
-  return createClient(url, serviceKey)
-}
-
-interface AuthenticatedSocioContext {
-  socioId: string
-  applyCookies<T extends NextResponse>(response: T): T
-}
-
-async function getAuthenticatedSocioContext(
-  request: NextRequest
-): Promise<AuthenticatedSocioContext | null> {
-  const authHeader = request.headers.get('authorization')
-  let userId: string | null = null
-  let applyCookies = <T extends NextResponse>(response: T): T => response
-
-  if (authHeader?.startsWith('Bearer ')) {
-    const token = authHeader.slice(7)
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    )
-
-    const { data: { user }, error } = await supabase.auth.getUser(token)
-    if (!error && user) {
-      userId = user.id
-    }
-  }
-
-  if (!userId) {
-    const routeClient = createSupabaseRouteClient(request)
-    const { data: { user }, error } = await routeClient.supabase.auth.getUser()
-    if (error || !user) return null
-
-    userId = user.id
-    applyCookies = routeClient.applyCookies
-  }
-
-  const serviceSupabase = getServiceSupabase()
-  const { data: socio } = await serviceSupabase
-    .from('socios')
-    .select('id')
-    .eq('usuario_id', userId)
-    .single()
-
-  if (!socio?.id) return null
-
-  return {
-    socioId: socio.id,
-    applyCookies,
-  }
-}
+import { getAuthenticatedSocioContext, getServiceSupabase } from '@/lib/server-auth'
 
 const ALLOWED_FIELDS = [
   'tarea_asignada',
@@ -94,10 +35,11 @@ export async function GET(request: NextRequest) {
       .maybeSingle()
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      return authContext.applyCookies(
+        NextResponse.json({ error: error.message }, { status: 500 })
+      )
     }
 
-    // Si no hay preferencias, devolver defaults (todo activado)
     if (!data) {
       return authContext.applyCookies(NextResponse.json({
         socio_id: authContext.socioId,
@@ -136,12 +78,13 @@ export async function PUT(request: NextRequest) {
     }
 
     const body = await request.json()
-
     const updates: Record<string, boolean | number> = {}
+
     for (const [key, value] of Object.entries(body)) {
       if (ALLOWED_FIELDS.includes(key) && typeof value === 'boolean') {
         updates[key] = value
       }
+
       if (key === 'dias_antelacion_recordatorio' && typeof value === 'number' && Number.isInteger(value)) {
         updates[key] = Math.max(0, Math.min(14, value))
       }
@@ -155,7 +98,6 @@ export async function PUT(request: NextRequest) {
     }
 
     const supabase = getServiceSupabase()
-
     const { data, error } = await supabase
       .from('email_preferences')
       .upsert(
@@ -166,7 +108,9 @@ export async function PUT(request: NextRequest) {
       .single()
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      return authContext.applyCookies(
+        NextResponse.json({ error: error.message }, { status: 500 })
+      )
     }
 
     return authContext.applyCookies(NextResponse.json(data))

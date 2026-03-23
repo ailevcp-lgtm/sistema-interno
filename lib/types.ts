@@ -18,8 +18,9 @@ export type EstadoSocio = 'activo' | 'inactivo' | 'eliminado'
 export type EstadoCuota = 'pendiente' | 'pagada' | 'parcial' | 'vencida'
 export type TipoMovimiento = 'ingreso' | 'egreso'
 export type TipoResolucion = 'asamblea' | 'decreto'
-export type EstadoResolucion = 'vigente' | 'derogada'
+export type EstadoResolucion = 'vigente' | 'derogada' | 'borrador'
 export type EstadoBalance = 'borrador' | 'aprobado_cd' | 'aprobado_asamblea'
+export type EstadoPropuesta = 'borrador' | 'publicado'
 export type TipoBalance = 'mensual' | 'trimestral' | 'anual'
 export type ReintegroEstado =
   | 'borrador'
@@ -369,6 +370,36 @@ export interface Resolucion {
   creadoPor?: Usuario
 }
 
+export interface PropuestaSeccion {
+  id: string
+  orden: number
+  tipo: 'Texto' | 'Imagen' | 'Video'
+  titulo?: string | null
+  contenido: string
+}
+
+export interface Propuesta {
+  id: string
+  slug: string
+  titulo: string
+  contenido: string // Legacy, keep for backward compatibility or simple use
+  estado: EstadoPropuesta
+  hero_image_url?: string | null
+  descripcion_corta?: string | null
+  pie_imagen_principal?: string | null
+  autor?: string | null
+  categoria?: string | null
+  palabras_clave?: string[]
+  seo_titulo?: string | null
+  seo_descripcion?: string | null
+  secciones?: PropuestaSeccion[]
+  created_at: string
+  updated_at: string
+  created_by?: string | null
+  // Relaciones
+  creadoPor?: Usuario
+}
+
 export interface ArticuloEstatuto {
   id: string
   capitulo: number
@@ -445,6 +476,7 @@ export type Recurso =
   | 'balances'
   | 'logs'
   | 'reuniones'
+  | 'propuestas'
 
 export type Accion = 'ver' | 'crear' | 'editar' | 'eliminar' | 'aprobar'
 

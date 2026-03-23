@@ -10,6 +10,7 @@ import { toast } from 'sonner'
 import { runWithRecovery } from '@/lib/async-recovery'
 import { sendEmailNotificationFromClient } from '@/lib/email/client'
 import type { EmailRecipient } from '@/lib/email/types'
+import { sanitizeRichHtml } from '@/lib/html-sanitizer'
 
 interface ActiveSocioRecipient {
     id: string
@@ -17,6 +18,23 @@ interface ActiveSocioRecipient {
     nombre: string
     apellido: string
     email: string | null
+}
+
+function normalizeResolutionInput<T extends Partial<Resolucion>>(data: T): T {
+    return {
+        ...data,
+        titulo: typeof data.titulo === 'string' ? data.titulo.trim() : data.titulo,
+        contenido: typeof data.contenido === 'string' ? sanitizeRichHtml(data.contenido) : data.contenido,
+        archivo_url: typeof data.archivo_url === 'string' ? data.archivo_url.trim() || undefined : data.archivo_url,
+    }
+}
+
+function sanitizeResolutionRow(row: Resolucion): Resolucion {
+    return {
+        ...row,
+        contenido: sanitizeRichHtml(row.contenido || ''),
+        archivo_url: row.archivo_url?.trim() || undefined,
+    }
 }
 
 export function useDocumentos() {
@@ -156,7 +174,7 @@ export function useDocumentos() {
             if (error) {
                 throw error
             }
-            return data as Resolucion[]
+            return (data as Resolucion[] || []).map(sanitizeResolutionRow)
         } catch (error) {
             console.error('Error fetching resoluciones:', error)
             toast.error('Error al cargar resoluciones')
@@ -263,9 +281,10 @@ export function useDocumentos() {
 
     const createResolucion = useCallback(async (data: Omit<Resolucion, 'id' | 'created_at'>) => {
         setLoading(true)
+        const normalizedData = normalizeResolutionInput(data)
         const { data: newRes, error } = await supabase
             .from('resoluciones')
-            .insert([data])
+            .insert([normalizedData])
             .select()
             .single()
 
@@ -276,61 +295,64 @@ export function useDocumentos() {
         }
         toast.success('Resolución creada correctamente')
 
-        const resolucion = newRes as Resolucion
+        const resolucion = sanitizeResolutionRow(newRes as Resolucion)
 
-        // Notificar a todos los socios sobre nueva resolución/decreto
-        void (async () => {
-            try {
-                const socios = await getActiveSocios()
-                const { data: sessionData } = await supabase.auth.getSession()
-                const currentUserId = sessionData.session?.user?.id
-                const currentSocio = socios.find((s) => s.usuario_id === currentUserId)
-                const creatorName = currentSocio ? `${currentSocio.nombre} ${currentSocio.apellido}` : 'Un miembro'
+        if (resolucion.estado !== 'borrador') {
+            // Notificar a todos los socios sobre nueva resolución/decreto publicada
+            void (async () => {
+                try {
+                    const socios = await getActiveSocios()
+                    const { data: sessionData } = await supabase.auth.getSession()
+                    const currentUserId = sessionData.session?.user?.id
+                    const currentSocio = socios.find((s) => s.usuario_id === currentUserId)
+                    const creatorName = currentSocio ? `${currentSocio.nombre} ${currentSocio.apellido}` : 'Un miembro'
 
-                const recipients: EmailRecipient[] = socios
-                    .filter((s) => s.usuario_id !== currentUserId && s.email)
-                    .map((s) => ({
-                        socio_id: s.id,
-                        email: s.email!,
-                        nombre: s.nombre,
-                        apellido: s.apellido,
-                    }))
+                    const recipients: EmailRecipient[] = socios
+                        .filter((s) => s.usuario_id !== currentUserId && s.email)
+                        .map((s) => ({
+                            socio_id: s.id,
+                            email: s.email!,
+                            nombre: s.nombre,
+                            apellido: s.apellido,
+                        }))
 
-                const isDecreto = data.tipo === 'decreto'
-                const notifType = isDecreto ? 'decreto_nuevo' as const : 'resolucion_nueva' as const
+                    const isDecreto = data.tipo === 'decreto'
+                    const notifType = isDecreto ? 'decreto_nuevo' as const : 'resolucion_nueva' as const
 
-                if (isDecreto) {
-                    void sendEmailNotificationFromClient(notifType, recipients, {
-                        type: 'decreto_nuevo',
-                        decreto_titulo: resolucion.titulo,
-                        decreto_numero: resolucion.numero,
-                        decreto_anio: resolucion.anio,
-                        decreto_fecha: resolucion.fecha,
-                        creado_por_nombre: creatorName,
-                    })
-                } else {
-                    void sendEmailNotificationFromClient(notifType, recipients, {
-                        type: 'resolucion_nueva',
-                        resolucion_titulo: resolucion.titulo,
-                        resolucion_numero: resolucion.numero,
-                        resolucion_anio: resolucion.anio,
-                        resolucion_fecha: resolucion.fecha,
-                        creado_por_nombre: creatorName,
-                    })
+                    if (isDecreto) {
+                        void sendEmailNotificationFromClient(notifType, recipients, {
+                            type: 'decreto_nuevo',
+                            decreto_titulo: resolucion.titulo,
+                            decreto_numero: resolucion.numero,
+                            decreto_anio: resolucion.anio,
+                            decreto_fecha: resolucion.fecha,
+                            creado_por_nombre: creatorName,
+                        })
+                    } else {
+                        void sendEmailNotificationFromClient(notifType, recipients, {
+                            type: 'resolucion_nueva',
+                            resolucion_titulo: resolucion.titulo,
+                            resolucion_numero: resolucion.numero,
+                            resolucion_anio: resolucion.anio,
+                            resolucion_fecha: resolucion.fecha,
+                            creado_por_nombre: creatorName,
+                        })
+                    }
+                } catch (err) {
+                    console.warn('Error enviando notificación de resolución:', err)
                 }
-            } catch (err) {
-                console.warn('Error enviando notificación de resolución:', err)
-            }
-        })()
+            })()
+        }
 
         return resolucion
     }, [getActiveSocios])
 
     const updateResolucion = useCallback(async (id: string, data: Partial<Resolucion>) => {
         setLoading(true)
+        const normalizedData = normalizeResolutionInput(data)
         const { error } = await supabase
             .from('resoluciones')
-            .update(data)
+            .update(normalizedData)
             .eq('id', id)
 
         setLoading(false)
