@@ -16,9 +16,16 @@ export function getResendClient(): Resend {
 }
 
 export function getFromEmail(): string {
-  return process.env.RESEND_FROM_EMAIL || 'AILE <notificaciones@aile.org.ar>'
+  const senderEmail = process.env.EMAIL_FROM || process.env.RESEND_FROM_EMAIL || 'notificaciones@aile.org.ar'
+  const senderName = process.env.EMAIL_FROM_NAME || 'AILE'
+
+  if (senderEmail.includes('<')) {
+    return senderEmail
+  }
+
+  return `${senderName} <${senderEmail}>`
 }
 
 export function getAppUrl(): string {
-  return process.env.NEXT_PUBLIC_APP_URL || 'https://interno.aile.com.ar'
+  return process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || 'https://interno.aile.com.ar'
 }

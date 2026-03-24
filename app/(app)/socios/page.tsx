@@ -1,12 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import { useAuth, useRequirePermission } from '@/hooks/useAuth'
 import { useSocios } from '@/hooks/useSocios'
+import { useRoles } from '@/hooks/useRoles'
 import { formatDate, getInitials, generateAvatarColor } from '@/lib/utils'
-import { ESTADO_SOCIO_COLORS, ROL_COLORS, ROLES_AILE } from '@/lib/constants'
+import { ESTADO_SOCIO_COLORS, ROLES_AILE } from '@/lib/constants'
 import type { Socio, EstadoSocio } from '@/lib/types'
 
 import { Button } from '@/components/ui/button'
@@ -29,11 +29,11 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Search, Plus, MoreVertical, UserCheck, UserX, Edit, Eye, ChevronLeft, ChevronRight, Users } from 'lucide-react'
+import { Search, Plus, MoreVertical, UserCheck, UserX, Eye, ChevronLeft, ChevronRight, Users, Loader2 } from 'lucide-react'
 
 export default function SociosPage() {
-  const router = useRouter()
   const { user, hasPermission } = useAuth()
+  const { roles } = useRoles()
   const { loading: checkingAccess, hasPermission: canAccessSociosModule } = useRequirePermission('socios', 'ver', '/dashboard')
   const {
     socios,
@@ -50,9 +50,47 @@ export default function SociosPage() {
     loading,
     createSocio,
     uploadAvatar,
+    updateSocio,
+    refreshSocios,
   } = useSocios(canAccessSociosModule)
 
   const [showNewModal, setShowNewModal] = useState(false)
+  const syncAttemptedRef = useRef(false)
+  const canCreate = !!user && hasPermission('socios', 'crear')
+  const canEdit = !!user && hasPermission('socios', 'editar')
+  const [updatingRoleSocioId, setUpdatingRoleSocioId] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (checkingAccess || !canAccessSociosModule || !canEdit || syncAttemptedRef.current) {
+      return
+    }
+
+    syncAttemptedRef.current = true
+    let cancelled = false
+
+    void (async () => {
+      try {
+        const response = await fetch('/api/socios/sync-google-avatars', {
+          method: 'POST',
+        })
+
+        if (!response.ok) {
+          return
+        }
+
+        const result = await response.json() as { updated?: number }
+        if (!cancelled && Number(result.updated || 0) > 0) {
+          await refreshSocios({ silent: true })
+        }
+      } catch (error) {
+        console.warn('No se pudieron sincronizar los avatares de socios', error)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [canAccessSociosModule, checkingAccess, canEdit, refreshSocios])
 
   if (checkingAccess) {
     return (
@@ -65,9 +103,6 @@ export default function SociosPage() {
   if (!canAccessSociosModule) {
     return null
   }
-
-  const canCreate = !!user && hasPermission('socios', 'crear')
-  const canEdit = !!user && hasPermission('socios', 'editar')
 
   const handleToggleEstado = async (id: string) => {
     try {
@@ -108,6 +143,25 @@ export default function SociosPage() {
       } catch {
         // Error already handled via toast in the hook
       }
+    }
+  }
+
+  const handleQuickRoleChange = async (socio: Socio, roleId: string) => {
+    if (!roleId || roleId === socio.rol_aile_id) return
+
+    const selectedRole = roles.find((role) => role.id === roleId)
+    if (!selectedRole) return
+
+    setUpdatingRoleSocioId(socio.id)
+    try {
+      await updateSocio(socio.id, {
+        rol_aile_id: selectedRole.id,
+        rol_aile: selectedRole.nombre,
+      })
+    } catch {
+      // Error handled in hook
+    } finally {
+      setUpdatingRoleSocioId((current) => (current === socio.id ? null : current))
     }
   }
 
@@ -223,7 +277,12 @@ export default function SociosPage() {
             <SocioRow
               key={socio.id}
               socio={socio}
+              currentUserSocioId={user?.socio_id}
+              currentUserAvatarUrl={user?.avatar_url}
+              roles={roles}
               canEdit={canEdit}
+              isUpdatingRole={updatingRoleSocioId === socio.id}
+              onQuickRoleChange={handleQuickRoleChange}
               onToggleEstado={handleToggleEstado}
               onDelete={handleDelete}
             />
@@ -276,25 +335,44 @@ export default function SociosPage() {
 
 function SocioRow({
   socio,
+  currentUserSocioId,
+  currentUserAvatarUrl,
+  roles,
   canEdit,
+  isUpdatingRole,
+  onQuickRoleChange,
   onToggleEstado,
   onDelete,
 }: {
   socio: Socio
+  currentUserSocioId?: string
+  currentUserAvatarUrl?: string
+  roles: Array<{ id: string; nombre: string }>
   canEdit: boolean
+  isUpdatingRole: boolean
+  onQuickRoleChange: (socio: Socio, roleId: string) => void
   onToggleEstado: (id: string) => void
   onDelete: (id: string) => void
 }) {
   const avatarColor = generateAvatarColor(socio.id)
   const estadoColors = ESTADO_SOCIO_COLORS[socio.estado] || ESTADO_SOCIO_COLORS.inactivo
+  const resolvedAvatarUrl = socio.avatar_url || (currentUserSocioId === socio.id ? currentUserAvatarUrl : undefined)
+  const cardClassName = socio.estado === 'inactivo'
+    ? 'bg-muted/35 border-border hover:border-primary/20'
+    : 'bg-card border-border hover:border-primary/30'
+  const selectedRoleId = socio.rol_aile_id || roles.find((role) => role.nombre === socio.rol_aile)?.id || ''
 
   return (
-    <Card className="bg-card border-border hover:border-primary/30 transition-colors group">
+    <Card className={`${cardClassName} transition-colors group`}>
       <CardContent className="p-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <div className="flex min-w-0 flex-1 items-center gap-3 sm:gap-4">
             <Avatar className={`w-12 h-12 bg-gradient-to-br ${avatarColor}`}>
-              <AvatarImage src={socio.avatar_url} />
+              <AvatarImage
+                src={resolvedAvatarUrl}
+                alt={`${socio.nombre} ${socio.apellido}`}
+                className="object-cover"
+              />
               <AvatarFallback className="bg-transparent text-white font-semibold">
                 {getInitials(socio.nombre, socio.apellido)}
               </AvatarFallback>
@@ -308,14 +386,34 @@ function SocioRow({
                 >
                   {socio.apellido}, {socio.nombre}
                 </Link>
-                {socio.rol_aile && (
+                {canEdit ? (
+                  <div className="flex items-center gap-2">
+                    <Select
+                      value={selectedRoleId}
+                      onValueChange={(value) => onQuickRoleChange(socio, value)}
+                      disabled={isUpdatingRole}
+                    >
+                      <SelectTrigger className="h-7 w-auto min-w-[140px] rounded-full border-primary/30 bg-primary/10 px-3 text-[10px] font-medium text-primary shadow-none">
+                        <SelectValue placeholder="Rol" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {roles.map((role) => (
+                          <SelectItem key={role.id} value={role.id}>
+                            {role.nombre}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {isUpdatingRole ? <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" /> : null}
+                  </div>
+                ) : socio.rol_aile ? (
                   <Badge
                     variant="outline"
                     className="text-[10px] border-primary/30 text-primary bg-primary/10"
                   >
                     {socio.rol_aile}
                   </Badge>
-                )}
+                ) : null}
               </div>
               <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs sm:text-sm text-muted-foreground">
                 <span className="whitespace-nowrap">DNI: {socio.dni}</span>
@@ -417,7 +515,7 @@ function StatCard({
       <CardContent className="p-4">
         <div className="flex items-center gap-3">
           <div className="p-2 rounded-lg bg-primary/10">
-            <Icon className="w-5 h-5 text-primary" />
+            <Icon className={`w-5 h-5 ${color === 'text-foreground' ? 'text-primary' : color}`} />
           </div>
           <div>
             <p className="text-xl sm:text-2xl font-semibold text-foreground">{value}</p>

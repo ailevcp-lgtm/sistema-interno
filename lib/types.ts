@@ -476,9 +476,174 @@ export type Recurso =
   | 'balances'
   | 'logs'
   | 'reuniones'
+  | 'comunicaciones'
   | 'propuestas'
 
 export type Accion = 'ver' | 'crear' | 'editar' | 'eliminar' | 'aprobar'
+
+// ── Comunicaciones ────────────────────────────────────────────
+
+export type CommunicationContactStatus = 'active' | 'inactive'
+export type CommunicationSegmentType = 'manual' | 'dynamic'
+export type CommunicationCampaignStatus =
+  | 'draft'
+  | 'test_sent'
+  | 'scheduled'
+  | 'sending'
+  | 'sent'
+  | 'failed'
+export type CommunicationRecipientStatus =
+  | 'pending'
+  | 'test_sent'
+  | 'sent'
+  | 'failed'
+  | 'skipped'
+  | 'delivered'
+  | 'opened'
+  | 'clicked'
+  | 'bounced'
+  | 'unsubscribed'
+export type CommunicationSelectionMode = 'manual' | 'filters'
+
+export interface CommunicationEmailContent {
+  title: string
+  body: string
+  ctaLabel?: string | null
+  ctaUrl?: string | null
+  footerNote?: string | null
+}
+
+export interface CommunicationContact {
+  id: string
+  email: string
+  first_name?: string | null
+  last_name?: string | null
+  full_name?: string | null
+  account_name?: string | null
+  account_image_url?: string | null
+  account_roles?: string[] | null
+  email_verified_at?: string | null
+  account_is_active?: boolean | null
+  birth_date?: string | null
+  dni?: string | null
+  phone_number?: string | null
+  source?: string | null
+  provider?: string | null
+  status: CommunicationContactStatus
+  opt_in?: boolean | null
+  unsubscribed: boolean
+  bounced: boolean
+  metadata?: Record<string, unknown> | null
+  source_created_at?: string | null
+  last_synced_at?: string | null
+  created_at: string
+  updated_at: string
+  tags?: string[]
+  manual_tags?: string[]
+  synced_tags?: string[]
+}
+
+export interface CommunicationTemplate {
+  id: string
+  name: string
+  key?: string | null
+  description?: string | null
+  is_system: boolean
+  content_json: CommunicationEmailContent
+  created_by?: string | null
+  updated_by?: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface CommunicationCampaignFilters {
+  contactIds?: string[]
+  tags?: string[]
+  statuses?: CommunicationContactStatus[]
+  sources?: string[]
+  optInOnly?: boolean
+  minAge?: number
+  maxAge?: number
+}
+
+export interface CommunicationSegment {
+  id: string
+  name: string
+  description?: string | null
+  type: CommunicationSegmentType
+  criteria_json: CommunicationCampaignFilters
+  is_active: boolean
+  created_by?: string | null
+  updated_by?: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface CommunicationCampaign {
+  id: string
+  name: string
+  subject: string
+  preheader?: string | null
+  sender_name?: string | null
+  sender_email?: string | null
+  template_id?: string | null
+  status: CommunicationCampaignStatus
+  content_json: CommunicationEmailContent
+  selection_mode: CommunicationSelectionMode
+  filters_json?: CommunicationCampaignFilters | null
+  recipient_count_snapshot?: Record<string, unknown> | null
+  last_error?: string | null
+  created_by?: string | null
+  updated_by?: string | null
+  sent_at?: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface CommunicationCampaignRecipient {
+  id: string
+  campaign_id: string
+  contact_id?: string | null
+  email: string
+  delivery_status: CommunicationRecipientStatus
+  resend_id?: string | null
+  sent_at?: string | null
+  delivered_at?: string | null
+  opened_at?: string | null
+  clicked_at?: string | null
+  bounced_at?: string | null
+  unsubscribed_at?: string | null
+  error_message?: string | null
+  metadata?: Record<string, unknown> | null
+  created_at: string
+}
+
+export interface CommunicationEmailEvent {
+  id: string
+  campaign_id?: string | null
+  contact_id?: string | null
+  campaign_recipient_id?: string | null
+  event_type: string
+  payload?: Record<string, unknown> | null
+  created_at: string
+}
+
+export interface CommunicationSyncRun {
+  id: string
+  status: string
+  totals?: Record<string, unknown> | null
+  error_summary?: string | null
+  started_at: string
+  finished_at?: string | null
+  created_by?: string | null
+}
+
+export interface CommunicationModuleAccess {
+  id: string
+  user_id: string
+  granted_by?: string | null
+  created_at: string
+}
 
 // ── Reuniones por Dirección ────────────────────────────────
 

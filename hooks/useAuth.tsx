@@ -12,6 +12,7 @@ import {
   type RolePermissionOverridesMap,
 } from '@/lib/constants'
 import { RequestTimeoutError, runWithRecovery } from '@/lib/async-recovery'
+import { extractAuthAvatarUrl, shouldSyncAuthAvatar } from '@/lib/avatar'
 
 interface AuthUser {
   id: string
@@ -129,29 +130,10 @@ function resolveSafeNextPath(nextPath?: string | null): string {
   return nextPath
 }
 
-function getGoogleAvatarUrl(sessionUser: SessionUserLike): string | undefined {
-  const metadata = sessionUser.user_metadata
-  if (!metadata) return undefined
-
-  const candidates = [
-    metadata.avatar_url,
-    metadata.picture,
-    metadata.photo_url,
-  ]
-
-  for (const value of candidates) {
-    if (typeof value === 'string' && value.trim().length > 0) {
-      return value
-    }
-  }
-
-  return undefined
-}
-
 function mapSocioToAuthUser(
   data: SocioAuthRow,
   authEmail: string,
-  googleAvatarUrl?: string
+  authAvatarUrl?: string
 ): AuthUser {
   const institutionalRole = data.rol_aile_definition?.nombre || data.rol_aile
 
@@ -162,7 +144,7 @@ function mapSocioToAuthUser(
     nombre: data.nombre,
     apellido: data.apellido,
     rol: (data.rol as Rol) || 'socio',
-    avatar_url: data.avatar_url || googleAvatarUrl || undefined,
+    avatar_url: data.avatar_url || authAvatarUrl || undefined,
     rol_aile: institutionalRole || null,
   }
 }
@@ -306,6 +288,29 @@ async function fetchSocioByEmail(email: string): Promise<SocioAuthRow | null> {
   return exactMatches[0] || null
 }
 
+async function fetchCommunicationModuleAccess(userId: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('communication_module_access')
+    .select('id')
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  if (error) {
+    const message = error.message || ''
+    const missingTable =
+      message.toLowerCase().includes('communication_module_access')
+      || error.code === 'PGRST205'
+      || error.code === '42P01'
+
+    if (missingTable) {
+      return false
+    }
+
+    throw error
+  }
+  return Boolean(data?.id)
+}
+
 async function linkSocioToUserId(socioId: string, userId: string): Promise<SocioAuthRow | null> {
   const { error: updateError } = await supabase
     .from('socios')
@@ -326,9 +331,34 @@ async function linkSocioToUserId(socioId: string, userId: string): Promise<Socio
   return (reloadedSocio as SocioAuthRow | null) || null
 }
 
+async function syncSocioAvatarIfNeeded(
+  socioData: SocioAuthRow,
+  authAvatarUrl?: string
+): Promise<SocioAuthRow> {
+  if (!socioData.usuario_id || !shouldSyncAuthAvatar(socioData.avatar_url, authAvatarUrl)) {
+    return socioData
+  }
+
+  const { error } = await supabase
+    .from('socios')
+    .update({ avatar_url: authAvatarUrl })
+    .eq('id', socioData.id)
+    .eq('usuario_id', socioData.usuario_id)
+
+  if (error) {
+    console.error('Error syncing auth avatar for socio:', error)
+    return socioData
+  }
+
+  return {
+    ...socioData,
+    avatar_url: authAvatarUrl,
+  }
+}
+
 async function fetchAuthorizedSocioData(sessionUser: SessionUserLike): Promise<AuthUser | null> {
   const authEmail = (sessionUser.email || '').trim().toLowerCase()
-  const googleAvatarUrl = getGoogleAvatarUrl(sessionUser)
+  const authAvatarUrl = extractAuthAvatarUrl(sessionUser.user_metadata)
 
   let socioData = await fetchSocioByUserId(sessionUser.id)
 
@@ -350,7 +380,9 @@ async function fetchAuthorizedSocioData(sessionUser: SessionUserLike): Promise<A
   if (socioData.estado !== 'activo') return null
   if (socioData.usuario_id !== sessionUser.id) return null
 
-  return mapSocioToAuthUser(socioData, authEmail, googleAvatarUrl)
+  socioData = await syncSocioAvatarIfNeeded(socioData, authAvatarUrl)
+
+  return mapSocioToAuthUser(socioData, authEmail, authAvatarUrl)
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -359,6 +391,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [sessionStatus, setSessionStatus] = useState<'unknown' | 'authenticated' | 'unauthenticated'>('unknown')
   const [permissionOverrides, setPermissionOverrides] = useState<RolePermissionOverridesMap>({})
   const [taskScopeOverrides, setTaskScopeOverrides] = useState<Record<string, TaskScopeSettings>>({})
+  const [communicationsModuleAccess, setCommunicationsModuleAccess] = useState(false)
   const [roleSimulation, setRoleSimulationState] = useState<RoleSimulationState | null>(null)
 
   const latestUserRef = useRef<AuthUser | null>(null)
@@ -485,10 +518,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setUser(null)
           setPermissionOverrides({})
           setTaskScopeOverrides({})
+          setCommunicationsModuleAccess(false)
           return
         }
 
-        const [authorizedUser, dynamicPermissionOverrides, dynamicTaskScopeOverrides] = await Promise.all([
+        const [authorizedUser, dynamicPermissionOverrides, dynamicTaskScopeOverrides, directCommunicationsAccess] = await Promise.all([
           runWithRecovery(
             () => fetchAuthorizedSocioData(sessionUser as SessionUserLike),
             { label: 'auth authorized profile', timeoutMs: 12_000, retries: 2, retryDelayMs: 400 }
@@ -501,6 +535,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             () => fetchRoleTaskScopeOverrides(),
             { label: 'auth role task scope overrides', timeoutMs: 12_000, retries: 2, retryDelayMs: 400 }
           ),
+          runWithRecovery(
+            () => fetchCommunicationModuleAccess((sessionUser as SessionUserLike).id),
+            { label: 'auth communications module access', timeoutMs: 12_000, retries: 2, retryDelayMs: 400 }
+          ),
         ])
 
         if (!authorizedUser) {
@@ -509,6 +547,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setUser(null)
           setPermissionOverrides({})
           setTaskScopeOverrides({})
+          setCommunicationsModuleAccess(false)
           return
         }
 
@@ -516,6 +555,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(authorizedUser)
         setPermissionOverrides(dynamicPermissionOverrides)
         setTaskScopeOverrides(dynamicTaskScopeOverrides)
+        setCommunicationsModuleAccess(directCommunicationsAccess)
       } catch (error) {
         if (error instanceof RequestTimeoutError || (error as { name?: string } | null)?.name === 'RequestTimeoutError') {
           if (latestUserRef.current) {
@@ -525,6 +565,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setUser(null)
             setPermissionOverrides({})
             setTaskScopeOverrides({})
+            setCommunicationsModuleAccess(false)
           }
 
           if (process.env.NODE_ENV !== 'production') {
@@ -544,6 +585,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(null)
         setPermissionOverrides({})
         setTaskScopeOverrides({})
+        setCommunicationsModuleAccess(false)
       }
     })()
 
@@ -566,6 +608,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(null)
         setPermissionOverrides({})
         setTaskScopeOverrides({})
+        setCommunicationsModuleAccess(false)
         clearRoleSimulation()
         return
       }
@@ -690,13 +733,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null)
     setPermissionOverrides({})
     setTaskScopeOverrides({})
+    setCommunicationsModuleAccess(false)
     clearRoleSimulation()
     router.push('/login')
   }
 
   const hasPermission = useCallback((recurso: Recurso, accion: Accion): boolean => {
+    if (recurso === 'comunicaciones') {
+      return resolvePermission(rol, recurso, accion, rolAile, permissionOverrides) || communicationsModuleAccess
+    }
     return resolvePermission(rol, recurso, accion, rolAile, permissionOverrides)
-  }, [rol, rolAile, permissionOverrides])
+  }, [communicationsModuleAccess, permissionOverrides, rol, rolAile])
 
   const hasActualPermission = useCallback((recurso: Recurso, accion: Accion): boolean => {
     return resolvePermission(actualRol, recurso, accion, actualRolAile, permissionOverrides)

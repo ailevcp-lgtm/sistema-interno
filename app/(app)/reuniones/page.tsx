@@ -1025,11 +1025,10 @@ function DialogEditarReunion({ reunion, editando, onCerrar, onGuardar, sociosAct
   const [horaInicio, setHoraInicio] = useState(horaInicioLocal)
   const [horaFin, setHoraFin] = useState(horaFinLocal)
   const [involucrados, setInvolucrados] = useState<Set<string>>(new Set())
-  const [loadingParticipants, setLoadingParticipants] = useState(false)
+  const [loadingParticipants, setLoadingParticipants] = useState(() => Boolean(reunion.calendario_reunion_id))
 
   useEffect(() => {
     if (!reunion.calendario_reunion_id) return
-    setLoadingParticipants(true)
     supabase
       .from('reuniones_calendario_participantes')
       .select('usuario_id')

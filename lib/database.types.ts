@@ -507,6 +507,378 @@ export interface Database {
           created_at?: string
         }
       }
+      communication_module_access: {
+        Row: {
+          id: string
+          user_id: string
+          granted_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          granted_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          granted_by?: string | null
+          created_at?: string
+        }
+      }
+      email_contacts: {
+        Row: {
+          id: string
+          email: string
+          first_name: string | null
+          last_name: string | null
+          full_name: string | null
+          account_name: string | null
+          account_image_url: string | null
+          account_roles: Json
+          email_verified_at: string | null
+          account_is_active: boolean | null
+          birth_date: string | null
+          dni: string | null
+          phone_number: string | null
+          source: string
+          provider: string | null
+          status: string
+          opt_in: boolean | null
+          unsubscribed: boolean
+          bounced: boolean
+          metadata: Json
+          source_created_at: string | null
+          last_synced_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          email: string
+          first_name?: string | null
+          last_name?: string | null
+          full_name?: string | null
+          account_name?: string | null
+          account_image_url?: string | null
+          account_roles?: Json
+          email_verified_at?: string | null
+          account_is_active?: boolean | null
+          birth_date?: string | null
+          dni?: string | null
+          phone_number?: string | null
+          source?: string
+          provider?: string | null
+          status?: string
+          opt_in?: boolean | null
+          unsubscribed?: boolean
+          bounced?: boolean
+          metadata?: Json
+          source_created_at?: string | null
+          last_synced_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          email?: string
+          first_name?: string | null
+          last_name?: string | null
+          full_name?: string | null
+          account_name?: string | null
+          account_image_url?: string | null
+          account_roles?: Json
+          email_verified_at?: string | null
+          account_is_active?: boolean | null
+          birth_date?: string | null
+          dni?: string | null
+          phone_number?: string | null
+          source?: string
+          provider?: string | null
+          status?: string
+          opt_in?: boolean | null
+          unsubscribed?: boolean
+          bounced?: boolean
+          metadata?: Json
+          source_created_at?: string | null
+          last_synced_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      email_contact_tags: {
+        Row: {
+          id: string
+          contact_id: string
+          tag: string
+          origin: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          contact_id: string
+          tag: string
+          origin?: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          contact_id?: string
+          tag?: string
+          origin?: string
+          created_at?: string
+        }
+      }
+      email_segments: {
+        Row: {
+          id: string
+          name: string
+          description: string | null
+          type: string
+          criteria_json: Json
+          is_active: boolean
+          created_by: string | null
+          updated_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          description?: string | null
+          type?: string
+          criteria_json?: Json
+          is_active?: boolean
+          created_by?: string | null
+          updated_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          description?: string | null
+          type?: string
+          criteria_json?: Json
+          is_active?: boolean
+          created_by?: string | null
+          updated_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      email_templates: {
+        Row: {
+          id: string
+          name: string
+          key: string | null
+          description: string | null
+          is_system: boolean
+          content_json: Json
+          created_by: string | null
+          updated_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          key?: string | null
+          description?: string | null
+          is_system?: boolean
+          content_json?: Json
+          created_by?: string | null
+          updated_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          key?: string | null
+          description?: string | null
+          is_system?: boolean
+          content_json?: Json
+          created_by?: string | null
+          updated_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      email_campaigns: {
+        Row: {
+          id: string
+          name: string
+          subject: string
+          preheader: string | null
+          sender_name: string | null
+          sender_email: string | null
+          template_id: string | null
+          status: string
+          content_json: Json
+          selection_mode: string
+          filters_json: Json
+          recipient_count_snapshot: Json
+          last_error: string | null
+          created_by: string | null
+          updated_by: string | null
+          sent_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          subject: string
+          preheader?: string | null
+          sender_name?: string | null
+          sender_email?: string | null
+          template_id?: string | null
+          status?: string
+          content_json?: Json
+          selection_mode?: string
+          filters_json?: Json
+          recipient_count_snapshot?: Json
+          last_error?: string | null
+          created_by?: string | null
+          updated_by?: string | null
+          sent_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          subject?: string
+          preheader?: string | null
+          sender_name?: string | null
+          sender_email?: string | null
+          template_id?: string | null
+          status?: string
+          content_json?: Json
+          selection_mode?: string
+          filters_json?: Json
+          recipient_count_snapshot?: Json
+          last_error?: string | null
+          created_by?: string | null
+          updated_by?: string | null
+          sent_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      email_campaign_recipients: {
+        Row: {
+          id: string
+          campaign_id: string
+          contact_id: string | null
+          email: string
+          delivery_status: string
+          resend_id: string | null
+          sent_at: string | null
+          delivered_at: string | null
+          opened_at: string | null
+          clicked_at: string | null
+          bounced_at: string | null
+          unsubscribed_at: string | null
+          error_message: string | null
+          metadata: Json
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          campaign_id: string
+          contact_id?: string | null
+          email: string
+          delivery_status?: string
+          resend_id?: string | null
+          sent_at?: string | null
+          delivered_at?: string | null
+          opened_at?: string | null
+          clicked_at?: string | null
+          bounced_at?: string | null
+          unsubscribed_at?: string | null
+          error_message?: string | null
+          metadata?: Json
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          campaign_id?: string
+          contact_id?: string | null
+          email?: string
+          delivery_status?: string
+          resend_id?: string | null
+          sent_at?: string | null
+          delivered_at?: string | null
+          opened_at?: string | null
+          clicked_at?: string | null
+          bounced_at?: string | null
+          unsubscribed_at?: string | null
+          error_message?: string | null
+          metadata?: Json
+          created_at?: string
+        }
+      }
+      email_events: {
+        Row: {
+          id: string
+          campaign_id: string | null
+          contact_id: string | null
+          campaign_recipient_id: string | null
+          event_type: string
+          payload: Json
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          campaign_id?: string | null
+          contact_id?: string | null
+          campaign_recipient_id?: string | null
+          event_type: string
+          payload?: Json
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          campaign_id?: string | null
+          contact_id?: string | null
+          campaign_recipient_id?: string | null
+          event_type?: string
+          payload?: Json
+          created_at?: string
+        }
+      }
+      email_sync_runs: {
+        Row: {
+          id: string
+          status: string
+          totals: Json
+          error_summary: string | null
+          created_by: string | null
+          started_at: string
+          finished_at: string | null
+        }
+        Insert: {
+          id?: string
+          status?: string
+          totals?: Json
+          error_summary?: string | null
+          created_by?: string | null
+          started_at?: string
+          finished_at?: string | null
+        }
+        Update: {
+          id?: string
+          status?: string
+          totals?: Json
+          error_summary?: string | null
+          created_by?: string | null
+          started_at?: string
+          finished_at?: string | null
+        }
+      }
       logs_actividad: {
         Row: {
           id: string
@@ -583,6 +955,22 @@ export interface Database {
           p_motivo: string | null
         }
         Returns: Database['public']['Tables']['solicitudes_reintegro']['Row']
+      }
+      fn_upsert_email_contact_from_sync: {
+        Args: {
+          p_email: string
+          p_first_name?: string | null
+          p_last_name?: string | null
+          p_full_name?: string | null
+          p_source?: string | null
+          p_provider?: string | null
+          p_status?: string | null
+          p_opt_in?: boolean | null
+          p_metadata?: Json
+          p_source_created_at?: string | null
+          p_last_synced_at?: string | null
+        }
+        Returns: string
       }
     }
     Enums: {

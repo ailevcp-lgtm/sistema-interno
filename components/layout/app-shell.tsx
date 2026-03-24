@@ -8,6 +8,7 @@ import { BottomNav } from "@/components/aile/bottom-nav"
 import { GuideContextBar } from "@/components/aile/guide/guide-context-bar"
 import { useAuth } from "@/hooks/useAuth"
 import { getGuideHrefForPath } from "@/lib/guide-content"
+import { getPageLabel } from "@/lib/navigation"
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
@@ -20,23 +21,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // Determinar página actual basada en pathname
   const currentPage = pathname?.split("/")[1] || "dashboard"
   const guideHref = getGuideHrefForPath(pathname)
-
-  // Mapeo de IDs a Labels para el header
-  const pageLabels: Record<string, string> = {
-    dashboard: "Inicio",
-    calendario: "Calendario",
-    socios: "Socios",
-    deudas: canViewAllDebt ? "Deudas" : "Mi deuda",
-    movimientos: "Movimientos",
-    finanzas: "Finanzas",
-    tesoreria: "Tesorería",
-    reintegros: "Reintegros",
-    documentos: "Documentos",
-    configuracion: "Configuración",
-    "mi-perfil": "Mi perfil",
-    "mi-cuenta": "Mi estado de cuenta",
-    guia: "Guía de uso",
-  }
 
   const handleNavigate = (page: string) => {
     if (page === "deudas" && !canViewAllDebt) {
@@ -62,7 +46,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       >
         <AileHeader
           currentPage={currentPage}
-          pageLabel={pageLabels[currentPage] || "Inicio"}
+          pageLabel={getPageLabel(currentPage, { canViewAllDebt })}
           guideHref={guideHref}
         />
 
@@ -70,7 +54,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <div className="mb-6">
             <GuideContextBar
               pathname={pathname || ""}
-              pageLabel={pageLabels[currentPage] || "Inicio"}
+              pageLabel={getPageLabel(currentPage, { canViewAllDebt })}
             />
           </div>
           {children}

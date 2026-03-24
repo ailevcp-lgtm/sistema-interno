@@ -1,37 +1,15 @@
 "use client"
 
-import {
-  LayoutGrid,
-  CalendarDays,
-  KanbanSquare,
-  Users,
-  BarChart2,
-  FileText,
-  ArrowUpDown,
-  MoreHorizontal,
-  CreditCard,
-  Settings,
-  Landmark,
-  ReceiptText,
-  X,
-} from "lucide-react"
+import { MoreHorizontal, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useState } from "react"
 import { useAuth } from "@/hooks/useAuth"
-
-const navItems = [
-  { id: "dashboard", label: "Inicio", icon: LayoutGrid, recurso: "dashboard" as const },
-  { id: "socios", label: "Socios", icon: Users, recurso: "socios" as const },
-  { id: "finanzas", label: "Finanzas", icon: BarChart2, recurso: "finanzas" as const },
-  { id: "documentos", label: "Docs", icon: FileText, recurso: "documentos" as const },
-  { id: "calendario", label: "Calendario", icon: CalendarDays, recurso: "calendario" as const },
-  { id: "tareas", label: "Tareas", icon: KanbanSquare, recurso: "tareas" as const },
-  { id: "deudas", label: "Deudas", icon: CreditCard, recurso: "deudas" as const, allowOwnDebtView: true },
-  { id: "movimientos", label: "Movimientos", icon: ArrowUpDown, recurso: "movimientos" as const },
-  { id: "tesoreria", label: "Tesorería", icon: Landmark, recurso: "tesoreria" as const },
-  { id: "reintegros", label: "Reintegros", icon: ReceiptText, recurso: "reintegros" as const },
-  { id: "configuracion", label: "Ajustes", icon: Settings, recurso: "configuracion" as const },
-] as const
+import {
+  getMobileNavItemLabel,
+  getNavItemLabel,
+  getVisibleAppNavItems,
+  MOBILE_PRIMARY_NAV_COUNT,
+} from "@/lib/navigation"
 
 interface BottomNavProps {
   currentPage: string
@@ -42,16 +20,13 @@ export function BottomNav({ currentPage, onNavigate }: BottomNavProps) {
   const [showMore, setShowMore] = useState(false)
   const { hasPermission, user } = useAuth()
   const canViewAllDebt = hasPermission("deudas", "ver")
-
-  const visibleItems = navItems.filter((item) => {
-    if ('allowOwnDebtView' in item && item.allowOwnDebtView) {
-      return hasPermission(item.recurso, "ver") || Boolean(user?.socio_id)
-    }
-    return hasPermission(item.recurso, "ver")
+  const visibleItems = getVisibleAppNavItems({
+    hasPermission,
+    hasSocioId: Boolean(user?.socio_id),
   })
 
-  const mainNavItems = visibleItems.slice(0, 4)
-  const moreItems = visibleItems.slice(4)
+  const mainNavItems = visibleItems.slice(0, MOBILE_PRIMARY_NAV_COUNT)
+  const moreItems = visibleItems.slice(MOBILE_PRIMARY_NAV_COUNT)
   const hasMoreItems = moreItems.length > 0
   const totalSlots = mainNavItems.length + (hasMoreItems ? 1 : 0)
 
@@ -86,7 +61,7 @@ export function BottomNav({ currentPage, onNavigate }: BottomNavProps) {
                   )}
                 >
                   <item.icon className="w-[18px] h-[18px]" strokeWidth={1.8} />
-                  <span>{item.id === "deudas" && !canViewAllDebt ? "Mi deuda" : item.label}</span>
+                  <span>{getNavItemLabel(item, { canViewAllDebt })}</span>
                 </button>
               ))}
             </div>
@@ -104,6 +79,7 @@ export function BottomNav({ currentPage, onNavigate }: BottomNavProps) {
         >
           {mainNavItems.map((item) => {
             const isActive = currentPage === item.id
+            const itemLabel = getMobileNavItemLabel(item, { canViewAllDebt })
             return (
               <button
                 key={item.id}
@@ -115,7 +91,7 @@ export function BottomNav({ currentPage, onNavigate }: BottomNavProps) {
               >
                 <item.icon className="w-5 h-5" strokeWidth={isActive ? 2.2 : 1.8} />
                 <span className={cn("text-[10px]", isActive ? "font-semibold" : "font-medium")}>
-                  {item.id === "deudas" && !canViewAllDebt ? "Mi deuda" : item.label}
+                  {itemLabel}
                 </span>
               </button>
             )

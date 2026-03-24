@@ -1,6 +1,7 @@
 // Constantes globales para AILE Sistema Interno
 
 import type { Rol, NavItem, Recurso, Accion } from './types'
+import { APP_NAV_ITEMS, MOBILE_PRIMARY_NAV_COUNT, toLegacyNavItem } from './navigation'
 
 // Configuración de la aplicación
 export const APP_CONFIG = {
@@ -38,6 +39,7 @@ export const PERMISSION_RESOURCES: Recurso[] = [
   'balances',
   'logs',
   'reuniones',
+  'comunicaciones',
   'propuestas',
 ]
 
@@ -60,6 +62,7 @@ export const RECURSO_LABELS: Record<Recurso, string> = {
   balances: 'Balances',
   logs: 'Logs',
   reuniones: 'Reuniones',
+  comunicaciones: 'Comunicaciones',
   propuestas: 'Propuestas',
 }
 
@@ -72,38 +75,17 @@ export const ACCION_LABELS: Record<Accion, string> = {
 }
 
 // Navegación principal
-export const NAV_ITEMS: NavItem[] = [
-  { href: '/dashboard', label: 'Inicio', icon: 'Home' },
-  { href: '/calendario', label: 'Calendario', icon: 'CalendarDays' },
-  { href: '/reuniones', label: 'Reuniones', icon: 'Users2' },
-  { href: '/tareas', label: 'Tareas', icon: 'KanbanSquare' },
-  { href: '/socios', label: 'Socios', icon: 'Users' },
-  { href: '/deudas', label: 'Deudas', icon: 'Wallet' },
-  { href: '/movimientos', label: 'Movimientos', icon: 'ArrowUpDown' },
-  { href: '/finanzas', label: 'Finanzas', icon: 'BarChart3', hiddenRoles: ['socio'] },
-  { href: '/tesoreria', label: 'Tesorería', icon: 'Landmark', hiddenRoles: ['socio'] },
-  { href: '/documentos', label: 'Documentos', icon: 'FileText' },
-  { href: '/configuracion', label: 'Configuración', icon: 'Settings', requiredRoles: ['comision_directiva', 'admin'] },
-]
+export const NAV_ITEMS: NavItem[] = APP_NAV_ITEMS.map(toLegacyNavItem)
 
 // Navegación mobile (BottomNav)
-export const BOTTOM_NAV_ITEMS: NavItem[] = [
-  { href: '/dashboard', label: 'Inicio', icon: 'Home' },
-  { href: '/calendario', label: 'Calendario', icon: 'CalendarDays' },
-  { href: '/tareas', label: 'Tareas', icon: 'KanbanSquare' },
-  { href: '/socios', label: 'Socios', icon: 'Users' },
-  { href: '/finanzas', label: 'Finanzas', icon: 'BarChart3', hiddenRoles: ['socio'] },
-  { href: '/documentos', label: 'Documentos', icon: 'FileText' },
-]
+export const BOTTOM_NAV_ITEMS: NavItem[] = APP_NAV_ITEMS
+  .slice(0, MOBILE_PRIMARY_NAV_COUNT)
+  .map(toLegacyNavItem)
 
 // Más opciones para el menú mobile
-export const MORE_NAV_ITEMS: NavItem[] = [
-  { href: '/deudas', label: 'Deudas', icon: 'Wallet' },
-  { href: '/movimientos', label: 'Movimientos', icon: 'ArrowUpDown' },
-  { href: '/calendario', label: 'Calendario', icon: 'CalendarDays' },
-  { href: '/tareas', label: 'Tareas', icon: 'KanbanSquare' },
-  { href: '/configuracion', label: 'Configuración', icon: 'Settings', requiredRoles: ['comision_directiva', 'admin'] },
-]
+export const MORE_NAV_ITEMS: NavItem[] = APP_NAV_ITEMS
+  .slice(MOBILE_PRIMARY_NAV_COUNT)
+  .map(toLegacyNavItem)
 
 // Labels de roles
 export const ROL_LABELS: Record<Rol, string> = {
@@ -387,6 +369,13 @@ export const PERMISSIONS: Record<Recurso, Record<Accion, Rol[]>> = {
     editar: ['comision_directiva', 'admin'],
     eliminar: ['admin'],
     aprobar: [],
+  },
+  comunicaciones: {
+    ver: ['comision_directiva', 'admin'],
+    crear: ['comision_directiva', 'admin'],
+    editar: ['comision_directiva', 'admin'],
+    eliminar: ['admin'],
+    aprobar: ['comision_directiva', 'admin'],
   },
   propuestas: {
     ver: ['comision_directiva', 'admin'],
