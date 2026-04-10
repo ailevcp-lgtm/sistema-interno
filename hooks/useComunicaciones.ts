@@ -387,6 +387,9 @@ export function useComunicaciones() {
       content_json: CommunicationEmailContent
       selection_mode: CommunicationCampaign['selection_mode']
       filters_json: CommunicationCampaignFilters
+    },
+    options?: {
+      silent?: boolean
     }
   ) => {
     const payload = {
@@ -419,7 +422,9 @@ export function useComunicaciones() {
     }
 
     await loadAll()
-    toast.success('Campana guardada')
+    if (!options?.silent) {
+      toast.success('Campana guardada')
+    }
   }, [loadAll])
 
   const deleteCampaign = useCallback(async (campaignId: string) => {

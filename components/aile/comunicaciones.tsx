@@ -481,21 +481,23 @@ export function ComunicacionesPage() {
     }
   }
 
+  const buildCampaignSaveInput = () => ({
+    id: campaignDraft.id,
+    name: campaignDraft.name,
+    subject: campaignDraft.subject,
+    preheader: campaignDraft.preheader || null,
+    sender_name: campaignDraft.sender_name || DEFAULT_SENDER_NAME,
+    sender_email: campaignDraft.sender_email || DEFAULT_SENDER_EMAIL,
+    template_id: campaignDraft.template_id || null,
+    status: campaignDraft.status,
+    content_json: campaignDraft.content_json,
+    selection_mode: campaignDraft.selection_mode,
+    filters_json: campaignDraft.filters_json || {},
+  })
+
   const handleSaveCampaign = async () => {
     try {
-      await saveCampaign({
-        id: campaignDraft.id,
-        name: campaignDraft.name,
-        subject: campaignDraft.subject,
-        preheader: campaignDraft.preheader || null,
-        sender_name: campaignDraft.sender_name || DEFAULT_SENDER_NAME,
-        sender_email: campaignDraft.sender_email || DEFAULT_SENDER_EMAIL,
-        template_id: campaignDraft.template_id || null,
-        status: campaignDraft.status,
-        content_json: campaignDraft.content_json,
-        selection_mode: campaignDraft.selection_mode,
-        filters_json: campaignDraft.filters_json || {},
-      })
+      await saveCampaign(buildCampaignSaveInput())
       setCampaignEditorOpen(false)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'No se pudo guardar la campana')
@@ -536,6 +538,7 @@ export function ComunicacionesPage() {
 
     try {
       setSendingCampaignId(campaignDraft.id)
+      await saveCampaign(buildCampaignSaveInput(), { silent: true })
       const result = await sendCampaign(campaignDraft.id)
       toast.success(`Campana procesada. Enviados: ${result.sent}. Fallidos: ${result.failed}.`)
       setSendConfirmOpen(false)
