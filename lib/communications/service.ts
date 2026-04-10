@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { randomUUID } from 'node:crypto'
 import { type Db, MongoClient, ObjectId } from 'mongodb'
 import { getResendClient } from '@/lib/email/resend'
 import { getServiceSupabase } from '@/lib/server-auth'
@@ -25,7 +26,6 @@ import {
   ensureMinimumContent,
   firstDefinedValue,
   formatSender,
-  getValueByPath,
   matchesAgeRange,
   normalizeCommunicationEmail,
   normalizeStringArray,
@@ -37,7 +37,13 @@ import {
 } from './utils'
 import { renderCommunicationEmailHtml } from './email'
 
-const SEND_BATCH_SIZE = 25
+const RESEND_SEND_BATCH_SIZE = 100
+const RESEND_MAX_SEND_ATTEMPTS = 4
+const RESEND_BASE_RETRY_DELAY_MS = 1_000
+const RESEND_MAX_RETRY_DELAY_MS = 10_000
+const RESEND_FALLBACK_CONCURRENCY = 2
+const RESEND_FALLBACK_DELAY_MS = 1_100
+const RECIPIENT_PERSIST_BATCH_SIZE = 20
 const DEFAULT_MONGO_USER_COLLECTION_CANDIDATES = ['users', 'Users', 'user', 'User']
 
 const emailFieldCandidates = ['email', 'correo', 'mail', 'profile.email', 'user.email', 'emails.0.address']
@@ -76,6 +82,32 @@ interface MongoRelationResolver {
   db: Db
   availableCollections: string[]
   cache: Map<string, Map<string, Record<string, unknown> | null>>
+}
+
+type CampaignEmailPayload = {
+  from: string
+  to: string
+  subject: string
+  html: string
+}
+
+type CampaignEmailTarget = {
+  contact: Pick<CommunicationContact, 'id' | 'email' | 'full_name' | 'first_name' | 'last_name'>
+  recipient: CommunicationCampaignRecipient
+  email: CampaignEmailPayload
+}
+
+type CampaignEmailSendResult = (
+  | { status: 'sent'; resendId: string | null }
+  | { status: 'failed'; errorMessage: string }
+) & {
+  target: CampaignEmailTarget
+}
+
+type ResendApiError = {
+  message: string
+  statusCode: number | null
+  name: string
 }
 
 function getMongoConfig() {
@@ -345,6 +377,258 @@ function getContactDisplayName(contact: Pick<CommunicationContact, 'full_name' |
     || [contact.first_name, contact.last_name].filter(Boolean).join(' ').trim()
     || contact.email
   )
+}
+
+function buildCampaignEmailTarget(params: {
+  campaignId: string
+  campaign: Pick<CommunicationCampaign, 'subject' | 'preheader' | 'content_json'>
+  sender: string
+  contact: Pick<CommunicationContact, 'id' | 'email' | 'full_name' | 'first_name' | 'last_name'>
+  recipient: CommunicationCampaignRecipient
+}): CampaignEmailTarget {
+  const unsubscribeUrl = buildRecipientUnsubscribeUrl({
+    mode: 'recipient',
+    campaignId: params.campaignId,
+    recipientId: params.recipient.id,
+    contactId: params.contact.id,
+  })
+
+  return {
+    contact: params.contact,
+    recipient: params.recipient,
+    email: {
+      from: params.sender,
+      to: params.contact.email,
+      subject: params.campaign.subject,
+      html: buildPreviewHtml(
+        params.campaign.subject,
+        params.campaign.preheader,
+        getContactDisplayName(params.contact),
+        params.campaign.content_json,
+        unsubscribeUrl
+      ),
+    },
+  }
+}
+
+function buildResendErrorMessage(error: ResendApiError) {
+  return error.message || 'Error desconocido enviando email'
+}
+
+function isRetryableResendError(error: ResendApiError) {
+  return (
+    error.name === 'rate_limit_exceeded'
+    || error.name === 'application_error'
+    || error.name === 'internal_server_error'
+    || error.name === 'concurrent_idempotent_requests'
+    || error.statusCode === 429
+    || (typeof error.statusCode === 'number' && error.statusCode >= 500)
+  )
+}
+
+function shouldFallbackToIndividualSends(error: ResendApiError) {
+  return ![
+    'daily_quota_exceeded',
+    'monthly_quota_exceeded',
+    'missing_api_key',
+    'restricted_api_key',
+    'invalid_api_key',
+    'invalid_from_address',
+    'security_error',
+    'invalid_access',
+    'invalid_region',
+  ].includes(error.name)
+}
+
+function parseRetryAfterMs(headers: Record<string, string> | null) {
+  if (!headers) return null
+
+  const retryAfterValue = Object.entries(headers).find(([key]) => key.toLowerCase() === 'retry-after')?.[1]
+  if (!retryAfterValue) return null
+
+  const retryAfterSeconds = Number(retryAfterValue)
+  if (Number.isFinite(retryAfterSeconds) && retryAfterSeconds >= 0) {
+    return retryAfterSeconds * 1_000
+  }
+
+  const retryAfterDate = Date.parse(retryAfterValue)
+  if (Number.isNaN(retryAfterDate)) return null
+
+  return Math.max(retryAfterDate - Date.now(), 0)
+}
+
+function getResendRetryDelayMs(headers: Record<string, string> | null, attempt: number) {
+  const retryAfterMs = parseRetryAfterMs(headers)
+  if (retryAfterMs !== null) {
+    return Math.min(Math.max(retryAfterMs, RESEND_BASE_RETRY_DELAY_MS), RESEND_MAX_RETRY_DELAY_MS)
+  }
+
+  return Math.min(
+    RESEND_BASE_RETRY_DELAY_MS * (2 ** Math.max(attempt - 1, 0)),
+    RESEND_MAX_RETRY_DELAY_MS
+  )
+}
+
+async function sleep(ms: number) {
+  if (ms <= 0) return
+  await new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function runResendOperationWithRetry<T extends {
+  error: ResendApiError | null
+  headers: Record<string, string> | null
+}>(operation: () => Promise<T>): Promise<T> {
+  let lastResponse: T | null = null
+
+  for (let attempt = 1; attempt <= RESEND_MAX_SEND_ATTEMPTS; attempt += 1) {
+    const response = await operation()
+    lastResponse = response
+
+    if (!response.error) {
+      return response
+    }
+
+    if (!isRetryableResendError(response.error) || attempt === RESEND_MAX_SEND_ATTEMPTS) {
+      return response
+    }
+
+    await sleep(getResendRetryDelayMs(response.headers, attempt))
+  }
+
+  if (!lastResponse) {
+    throw new Error('No se pudo ejecutar la operacion con Resend')
+  }
+
+  return lastResponse
+}
+
+function buildCampaignBatchIdempotencyKey(sendRunId: string, batchIndex: number) {
+  return `campaign-send:${sendRunId}:batch:${batchIndex}`
+}
+
+function buildCampaignRecipientIdempotencyKey(sendRunId: string, recipientId: string) {
+  return `campaign-send:${sendRunId}:recipient:${recipientId}`
+}
+
+async function sendCampaignBatch(params: {
+  resend: ReturnType<typeof getResendClient>
+  batch: CampaignEmailTarget[]
+  sendRunId: string
+  batchIndex: number
+}) {
+  const response = await runResendOperationWithRetry(() => params.resend.batch.send(
+    params.batch.map((target) => target.email),
+    {
+      batchValidation: 'strict',
+      idempotencyKey: buildCampaignBatchIdempotencyKey(params.sendRunId, params.batchIndex),
+    }
+  ))
+
+  if (!response.error) {
+    return params.batch.map((target, index) => ({
+      status: 'sent' as const,
+      target,
+      resendId: response.data.data[index]?.id || null,
+    }))
+  }
+
+  if (!shouldFallbackToIndividualSends(response.error)) {
+    const errorMessage = buildResendErrorMessage(response.error)
+    return params.batch.map((target) => ({
+      status: 'failed' as const,
+      target,
+      errorMessage,
+    }))
+  }
+
+  const results: CampaignEmailSendResult[] = []
+  const fallbackBatches = chunkArray(params.batch, RESEND_FALLBACK_CONCURRENCY)
+
+  for (let fallbackIndex = 0; fallbackIndex < fallbackBatches.length; fallbackIndex += 1) {
+    const fallbackBatch = fallbackBatches[fallbackIndex]
+    const fallbackResults = await Promise.all(fallbackBatch.map(async (target) => {
+      const individualResponse = await runResendOperationWithRetry(() => params.resend.emails.send(
+        target.email,
+        {
+          idempotencyKey: buildCampaignRecipientIdempotencyKey(params.sendRunId, target.recipient.id),
+        }
+      ))
+
+      if (individualResponse.error) {
+        return {
+          status: 'failed' as const,
+          target,
+          errorMessage: buildResendErrorMessage(individualResponse.error),
+        }
+      }
+
+      return {
+        status: 'sent' as const,
+        target,
+        resendId: individualResponse.data?.id || null,
+      }
+    }))
+
+    results.push(...fallbackResults)
+
+    if (fallbackIndex < fallbackBatches.length - 1) {
+      await sleep(RESEND_FALLBACK_DELAY_MS)
+    }
+  }
+
+  return results
+}
+
+async function persistCampaignSendResults(params: {
+  serviceSupabase: ReturnType<typeof getServiceSupabase>
+  campaignId: string
+  results: CampaignEmailSendResult[]
+}) {
+  for (const resultBatch of chunkArray(params.results, RECIPIENT_PERSIST_BATCH_SIZE)) {
+    await Promise.all(resultBatch.map(async (result) => {
+      if (result.status === 'sent') {
+        const { error } = await params.serviceSupabase
+          .from('email_campaign_recipients')
+          .update({
+            delivery_status: 'sent',
+            resend_id: result.resendId,
+            sent_at: new Date().toISOString(),
+            error_message: null,
+          })
+          .eq('id', result.target.recipient.id)
+
+        if (error) throw error
+
+        await insertEmailEvent({
+          campaignId: params.campaignId,
+          contactId: result.target.contact.id,
+          campaignRecipientId: result.target.recipient.id,
+          eventType: 'sent',
+          body: { resendId: result.resendId },
+        })
+
+        return
+      }
+
+      const { error } = await params.serviceSupabase
+        .from('email_campaign_recipients')
+        .update({
+          delivery_status: 'failed',
+          error_message: result.errorMessage,
+        })
+        .eq('id', result.target.recipient.id)
+
+      if (error) throw error
+
+      await insertEmailEvent({
+        campaignId: params.campaignId,
+        contactId: result.target.contact.id,
+        campaignRecipientId: result.target.recipient.id,
+        eventType: 'failed',
+        body: { error: result.errorMessage },
+      })
+    }))
+  }
 }
 
 async function resolveContactsForCampaign(
@@ -917,93 +1201,43 @@ export async function sendSavedCampaign(input: unknown) {
     }
   })
 
+  const resend = getResendClient()
+  const sendRunId = randomUUID()
   let sentCount = 0
   let failedCount = 0
 
-  for (const batch of chunkArray(validContacts, SEND_BATCH_SIZE)) {
-    const settled = await Promise.allSettled(
-      batch.map(async (contact) => {
-        const recipient = recipientByContactId.get(contact.id)
-        if (!recipient) {
-          throw new Error(`No se encontro el destinatario persistido para ${contact.email}`)
-        }
-
-        const unsubscribeUrl = buildRecipientUnsubscribeUrl({
-          mode: 'recipient',
-          campaignId,
-          recipientId: recipient.id,
-          contactId: contact.id,
-        })
-
-        const html = buildPreviewHtml(
-          campaign.subject,
-          campaign.preheader,
-          getContactDisplayName(contact),
-          campaign.content_json,
-          unsubscribeUrl
-        )
-
-        const response = await getResendClient().emails.send({
-          from: sender,
-          to: contact.email,
-          subject: campaign.subject,
-          html,
-        })
-
-        if (response.error) {
-          throw new Error(response.error.message)
-        }
-
-        await serviceSupabase
-          .from('email_campaign_recipients')
-          .update({
-            delivery_status: 'sent',
-            resend_id: response.data?.id || null,
-            sent_at: new Date().toISOString(),
-          })
-          .eq('id', recipient.id)
-
-        await insertEmailEvent({
-          campaignId,
-          contactId: contact.id,
-          campaignRecipientId: recipient.id,
-          eventType: 'sent',
-          body: { resendId: response.data?.id || null },
-        })
-      })
-    )
-
-    for (let index = 0; index < settled.length; index += 1) {
-      const result = settled[index]
-      const contact = batch[index]
+  for (const [batchIndex, batch] of chunkArray(validContacts, RESEND_SEND_BATCH_SIZE).entries()) {
+    const emailBatch = batch.map((contact) => {
       const recipient = recipientByContactId.get(contact.id)
-
-      if (result.status === 'fulfilled') {
-        sentCount += 1
-        continue
+      if (!recipient) {
+        throw new Error(`No se encontro el destinatario persistido para ${contact.email}`)
       }
 
-      failedCount += 1
-      const message = result.reason instanceof Error ? result.reason.message : 'Error desconocido'
-
-      if (recipient) {
-        await serviceSupabase
-          .from('email_campaign_recipients')
-          .update({
-            delivery_status: 'failed',
-            error_message: message,
-          })
-          .eq('id', recipient.id)
-      }
-
-      await insertEmailEvent({
+      return buildCampaignEmailTarget({
         campaignId,
-        contactId: contact.id,
-        campaignRecipientId: recipient?.id || null,
-        eventType: 'failed',
-        body: { error: message },
+        campaign,
+        sender,
+        contact,
+        recipient,
       })
-    }
+    })
+
+    const results = await sendCampaignBatch({
+      resend,
+      batch: emailBatch,
+      sendRunId,
+      batchIndex,
+    })
+
+    const batchSentCount = results.filter((result) => result.status === 'sent').length
+    sentCount += batchSentCount
+    failedCount += results.length - batchSentCount
+
+    await persistCampaignSendResults({
+      serviceSupabase,
+      campaignId,
+      results,
+    })
   }
 
   const finalStatus: CommunicationCampaign['status'] = sentCount > 0 ? 'sent' : 'failed'
