@@ -6,6 +6,7 @@ export type EmailNotificationType =
   | 'tarea_asignada'
   | 'tarea_estado_cambio'
   | 'tarea_vencimiento_proximo'
+  | 'tareas_vencidas_resumen'
   | 'subtarea_creada'
   | 'handoff_solicitado'
   | 'handoff_resuelto'
@@ -16,6 +17,7 @@ export type EmailNotificationType =
   | 'calendario_reunion_modificada'
   | 'calendario_reunion_cancelada'
   | 'calendario_planificacion_definitiva'
+  | 'reunion_asistencia_pendiente_recordatorio'
   // Resoluciones y Decretos
   | 'resolucion_nueva'
   | 'decreto_nuevo'
@@ -61,6 +63,20 @@ export interface TareaVencimientoData {
   proyecto_nombre: string
   fecha_limite: string
   dias_restantes: number
+}
+
+export interface TareasVencidasResumenItemData {
+  id: string
+  tarea_titulo: string
+  proyecto_nombre: string
+  fecha_limite: string
+  dias_vencida: number
+}
+
+export interface TareasVencidasResumenData {
+  type: 'tareas_vencidas_resumen'
+  cantidad_tareas: number
+  tareas: TareasVencidasResumenItemData[]
 }
 
 export interface SubtareaCreadaData {
@@ -143,6 +159,16 @@ export interface CalendarioPlanificacionDefinitivaData {
   definido_por_nombre: string
 }
 
+export interface ReunionAsistenciaPendienteRecordatorioData {
+  type: 'reunion_asistencia_pendiente_recordatorio'
+  reunion_titulo: string
+  reunion_fecha: string
+  reunion_fecha_fin: string
+  reunion_lugar?: string | null
+  reunion_direccion: string
+  dias_pendiente: number
+}
+
 // ── Resoluciones y Decretos ─────────────────────────────
 
 export interface ResolucionNuevaData {
@@ -176,6 +202,7 @@ export type EmailNotificationData =
   | TareaAsignadaData
   | TareaEstadoCambioData
   | TareaVencimientoData
+  | TareasVencidasResumenData
   | SubtareaCreadaData
   | HandoffSolicitadoData
   | HandoffResueltoData
@@ -185,6 +212,7 @@ export type EmailNotificationData =
   | CalendarioReunionModificadaData
   | CalendarioReunionCanceladaData
   | CalendarioPlanificacionDefinitivaData
+  | ReunionAsistenciaPendienteRecordatorioData
   | ResolucionNuevaData
   | DecretoNuevoData
   | BalanceNuevoData
@@ -194,6 +222,7 @@ export const NOTIFICATION_PREFERENCE_MAP: Record<EmailNotificationType, string> 
   tarea_asignada: 'tarea_asignada',
   tarea_estado_cambio: 'tarea_estado_cambio',
   tarea_vencimiento_proximo: 'tarea_vencimiento_proximo',
+  tareas_vencidas_resumen: 'tareas_vencidas_resumen',
   subtarea_creada: 'subtarea_creada',
   handoff_solicitado: 'handoff_solicitado',
   handoff_resuelto: 'handoff_resuelto',
@@ -203,6 +232,7 @@ export const NOTIFICATION_PREFERENCE_MAP: Record<EmailNotificationType, string> 
   calendario_reunion_modificada: 'calendario_reunion_modificada',
   calendario_reunion_cancelada: 'calendario_reunion_cancelada',
   calendario_planificacion_definitiva: 'calendario_planificacion_definitiva',
+  reunion_asistencia_pendiente_recordatorio: 'reunion_asistencia_pendiente_recordatorio',
   resolucion_nueva: 'resolucion_nueva',
   decreto_nuevo: 'decreto_nuevo',
   balance_nuevo: 'balance_nuevo',
@@ -213,6 +243,7 @@ export const NOTIFICATION_LABELS: Record<EmailNotificationType, string> = {
   tarea_asignada: 'Cuando me asignan una tarea',
   tarea_estado_cambio: 'Cuando cambia el estado de mis tareas',
   tarea_vencimiento_proximo: 'Recordatorio de tareas por vencer',
+  tareas_vencidas_resumen: 'Resumen diario de tareas vencidas',
   subtarea_creada: 'Cuando crean una subtarea en mis tareas',
   handoff_solicitado: 'Cuando me solicitan un handoff',
   handoff_resuelto: 'Cuando se resuelve un handoff que solicité',
@@ -223,6 +254,7 @@ export const NOTIFICATION_LABELS: Record<EmailNotificationType, string> = {
   calendario_reunion_modificada: 'Cuando se modifica una reunión',
   calendario_reunion_cancelada: 'Cuando se cancela una reunión',
   calendario_planificacion_definitiva: 'Cuando una fecha de planificación es definitiva',
+  reunion_asistencia_pendiente_recordatorio: 'Recordatorio para registrar asistencia de mis reuniones',
   // Resoluciones y Decretos
   resolucion_nueva: 'Cuando se publica una nueva resolución de CD',
   decreto_nuevo: 'Cuando se publica un nuevo decreto',
@@ -236,6 +268,7 @@ export const NOTIFICATION_CATEGORIES = [
       'tarea_asignada',
       'tarea_estado_cambio',
       'tarea_vencimiento_proximo',
+      'tareas_vencidas_resumen',
       'subtarea_creada',
       'handoff_solicitado',
       'handoff_resuelto',
@@ -250,6 +283,7 @@ export const NOTIFICATION_CATEGORIES = [
       'calendario_reunion_modificada',
       'calendario_reunion_cancelada',
       'calendario_planificacion_definitiva',
+      'reunion_asistencia_pendiente_recordatorio',
     ] as EmailNotificationType[],
   },
   {

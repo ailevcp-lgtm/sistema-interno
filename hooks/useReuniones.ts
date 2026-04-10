@@ -8,6 +8,7 @@ import { runWithRecovery } from '@/lib/async-recovery'
 import { useResumeRefresh } from '@/hooks/useResumeRefresh'
 import { normalizeInstitutionalRole } from '@/lib/constants'
 import { sendEmailNotificationFromClient } from '@/lib/email/client'
+import { DIRECCIONES_BASE, REUNION_DIRECCION_ALERT_THRESHOLD_DAYS } from '@/lib/reuniones'
 import type {
   DireccionBase,
   EstadoReunionDireccion,
@@ -87,7 +88,7 @@ export interface FrecuenciaDireccion {
   ultimaReunion: string | null
   diasSinReunion: number | null
   totalReuniones: number
-  enAlerta: boolean // más de 14 días sin reunión
+  enAlerta: boolean // más de 30 días sin reunión
 }
 
 export interface EstadisticaAsistencia {
@@ -852,7 +853,7 @@ export function useReuniones() {
 
   // ── Panel de frecuencia ───────────────────────────────────
 
-  const frecuenciaPorDireccion: FrecuenciaDireccion[] = (['CEA', 'Finanzas', 'Recursos Humanos', 'Comunicación'] as DireccionBase[]).map(
+  const frecuenciaPorDireccion: FrecuenciaDireccion[] = DIRECCIONES_BASE.map(
     (dir) => {
       const deEstaDireccion = reuniones.filter(
         (r) => r.direccion === dir && r.estado !== 'cancelada'
@@ -876,7 +877,9 @@ export function useReuniones() {
         ultimaReunion: ultima?.fecha_inicio || null,
         diasSinReunion,
         totalReuniones: finalizadas.length,
-        enAlerta: diasSinReunion === null || diasSinReunion > 14,
+        enAlerta:
+          diasSinReunion === null ||
+          diasSinReunion >= REUNION_DIRECCION_ALERT_THRESHOLD_DAYS,
       }
     }
   )

@@ -77,6 +77,7 @@ interface TareasProjectBoardProps {
   onCreateSubtask: (payload: CrearSubtareaPayload) => Promise<unknown>
   onSendToCd: (taskId: string, comment?: string) => Promise<unknown>
   onResolveCd: (taskId: string, approve: boolean, comment?: string) => Promise<unknown>
+  showCompletedTasks: boolean
   isCollapsed?: boolean
   onToggleCollapse?: () => void
   canMoveUp?: boolean
@@ -156,6 +157,7 @@ export function TareasProjectBoard({
   onCreateSubtask,
   onSendToCd,
   onResolveCd,
+  showCompletedTasks,
   isCollapsed = false,
   onToggleCollapse,
   canMoveUp = false,
@@ -199,6 +201,10 @@ export function TareasProjectBoard({
 
   const canCreateTaskInThisBoard = access.canCreate && (!directionScope || project.tipo === 'institucional')
   const projectDirectionLabel = project.direccion ? `Dirección: ${project.direccion}` : 'Proyecto madre global'
+  const hiddenCompletedCount = tasks.filter((task) => task.estado === 'completada').length
+  const visibleColumns = showCompletedTasks
+    ? columns
+    : columns.filter((column) => column.id !== 'completada')
 
   return (
     <>
@@ -229,6 +235,11 @@ export function TareasProjectBoard({
                 <Badge className={cn('border text-xs', projectStateBadge(project.estado))}>
                   {projectStateLabel(project.estado)}
                 </Badge>
+                {!showCompletedTasks && hiddenCompletedCount > 0 && (
+                  <Badge className="border border-emerald-200 bg-emerald-50 text-xs text-emerald-800">
+                    Completadas ocultas: {hiddenCompletedCount}
+                  </Badge>
+                )}
               </div>
             </div>
 
@@ -305,8 +316,11 @@ export function TareasProjectBoard({
 
         {!isCollapsed && (
           <CardContent className="p-3 sm:p-4">
-            <div className="grid gap-3 lg:grid-cols-4">
-              {columns.map((column) => {
+            <div className={cn(
+              'grid gap-3',
+              visibleColumns.length >= 4 ? 'lg:grid-cols-4' : 'lg:grid-cols-3'
+            )}>
+              {visibleColumns.map((column) => {
                 const tasksInColumn = tasks.filter((task) => task.estado === column.id)
 
                 return (

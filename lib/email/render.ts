@@ -159,6 +159,40 @@ function badge(text: string, color: string): string {
   return `<span style="display:inline-block;padding:3px 10px;background-color:${color}18;color:${color};font-size:12px;font-weight:600;border-radius:6px;border:1px solid ${color}30;">${text}</span>`
 }
 
+function renderOverdueTaskList(
+  tasks: Array<{
+    tarea_titulo: string
+    proyecto_nombre: string
+    fecha_limite: string
+    dias_vencida: number
+  }>
+): string {
+  return tasks
+    .map((task) => {
+      const overdueLabel = `${task.dias_vencida} día${task.dias_vencida === 1 ? '' : 's'} de atraso`
+
+      return `
+        <tr>
+          <td style="padding:0 0 12px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid ${COLORS.border};border-radius:10px;background-color:${COLORS.white};">
+              <tr>
+                <td style="padding:14px 16px;">
+                  <p style="margin:0;color:${COLORS.foreground};font-size:14px;font-weight:700;">${task.tarea_titulo}</p>
+                  <p style="margin:6px 0 0;color:${COLORS.muted};font-size:13px;">${task.proyecto_nombre}</p>
+                  <div style="margin-top:10px;">
+                    ${badge(formatDate(task.fecha_limite), COLORS.destructive)}
+                    <span style="display:inline-block;width:8px;"></span>
+                    ${badge(overdueLabel, COLORS.warning)}
+                  </div>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>`
+    })
+    .join('')
+}
+
 export function renderEmailHtml(
   data: EmailNotificationData,
   recipient: EmailRecipient,
@@ -167,6 +201,7 @@ export function renderEmailHtml(
   const greeting = `<p style="margin:0 0 4px;color:${COLORS.foreground};font-size:15px;">Hola <strong>${recipient.nombre}</strong>,</p>`
   const tareasUrl = `${appUrl}/tareas`
   const calendarioUrl = `${appUrl}/calendario`
+  const reunionesUrl = `${appUrl}/reuniones`
   const documentosUrl = `${appUrl}/documentos`
   const preferencesUrl = `${appUrl}/tareas?preferencias_email=1`
 
@@ -234,6 +269,23 @@ export function renderEmailHtml(
         </p>
         ${detailsTable(rows)}
         ${ctaButton('Ver tarea', tareasUrl)}`,
+      )
+    }
+
+    case 'tareas_vencidas_resumen': {
+      const taskLabel = `tarea${data.cantidad_tareas === 1 ? '' : 's'} vencida${data.cantidad_tareas === 1 ? '' : 's'}`
+      const taskList = renderOverdueTaskList(data.tareas)
+
+      return layout(
+        'Resumen diario de tareas vencidas',
+        `${greeting}
+        <p style="margin:12px 0 0;color:${COLORS.foreground};font-size:14px;">
+          Tienes <strong style="color:${COLORS.destructive};">${data.cantidad_tareas} ${taskLabel}</strong> pendiente${data.cantidad_tareas === 1 ? '' : 's'} de completar:
+        </p>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:18px 0 4px;">
+          ${taskList}
+        </table>
+        ${ctaButton('Revisar tareas', tareasUrl)}`,
       )
     }
 
@@ -429,6 +481,32 @@ export function renderEmailHtml(
         </p>
         ${detailsTable(rows)}
         ${ctaButton('Ver calendario', calendarioUrl)}`,
+      )
+    }
+
+    case 'reunion_asistencia_pendiente_recordatorio': {
+      const pendienteLabel =
+        data.dias_pendiente === 0
+          ? 'Pendiente desde hoy'
+          : `Pendiente hace ${data.dias_pendiente} día${data.dias_pendiente === 1 ? '' : 's'}`
+
+      const rows = [
+        infoRow('Reunión', `<strong>${data.reunion_titulo}</strong>`),
+        infoRow('Dirección', data.reunion_direccion),
+        infoRow('Fecha', formatDateTime(data.reunion_fecha)),
+        infoRow('Finaliza', formatDateTime(data.reunion_fecha_fin)),
+        data.reunion_lugar ? infoRow('Lugar', data.reunion_lugar) : '',
+        infoRow('Estado', badge(pendienteLabel, COLORS.warning)),
+      ].join('')
+
+      return layout(
+        'Asistencia pendiente por registrar',
+        `${greeting}
+        <p style="margin:12px 0 0;color:${COLORS.foreground};font-size:14px;">
+          La asistencia de una reunión que creaste todavía no fue registrada. Te lo recordamos para que puedas cargarla desde el módulo de Reuniones.
+        </p>
+        ${detailsTable(rows)}
+        ${ctaButton('Registrar asistencia', reunionesUrl)}`,
       )
     }
 

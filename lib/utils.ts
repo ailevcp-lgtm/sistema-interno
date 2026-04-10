@@ -16,9 +16,23 @@ export function formatARS(amount: number): string {
 }
 
 // Formato de fecha
-export function formatDate(dateStr: string): string {
-  const date = new Date(dateStr + 'T00:00:00')
-  return date.toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' })
+export function formatDate(date: string | Date): string {
+  const parsedDate =
+    date instanceof Date
+      ? date
+      : /^\d{4}-\d{2}-\d{2}$/.test(date)
+        ? new Date(`${date}T00:00:00`)
+        : new Date(date)
+
+  if (Number.isNaN(parsedDate.getTime())) {
+    return typeof date === 'string' ? date : ''
+  }
+
+  return parsedDate.toLocaleDateString('es-AR', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  })
 }
 
 // Formato de fecha larga

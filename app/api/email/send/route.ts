@@ -9,6 +9,7 @@ const EMAIL_NOTIFICATION_TYPES = [
   'tarea_asignada',
   'tarea_estado_cambio',
   'tarea_vencimiento_proximo',
+  'tareas_vencidas_resumen',
   'subtarea_creada',
   'handoff_solicitado',
   'handoff_resuelto',
@@ -18,6 +19,7 @@ const EMAIL_NOTIFICATION_TYPES = [
   'calendario_reunion_modificada',
   'calendario_reunion_cancelada',
   'calendario_planificacion_definitiva',
+  'reunion_asistencia_pendiente_recordatorio',
   'resolucion_nueva',
   'decreto_nuevo',
   'balance_nuevo',
@@ -25,6 +27,8 @@ const EMAIL_NOTIFICATION_TYPES = [
 
 const SERVER_ONLY_NOTIFICATION_TYPES = new Set<EmailNotificationType>([
   'tarea_vencimiento_proximo',
+  'tareas_vencidas_resumen',
+  'reunion_asistencia_pendiente_recordatorio',
 ])
 
 const NOTIFICATION_PERMISSION_GUARDS: Partial<Record<EmailNotificationType, Array<['balances' | 'resoluciones' | 'calendario', 'crear' | 'editar']>>> = {

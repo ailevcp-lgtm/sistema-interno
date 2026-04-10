@@ -40,6 +40,7 @@ import {
 } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
+import { Switch } from '@/components/ui/switch'
 import type {
   AccesoProyectoTarea,
   DireccionBase,
@@ -51,6 +52,7 @@ import type {
 import { EmailPreferencesDialog } from '@/components/aile/email-preferences-dialog'
 
 const COLLAPSED_PROJECTS_STORAGE_KEY = 'aile:tareas:collapsed-projects:v1'
+const SHOW_COMPLETED_TASKS_STORAGE_KEY = 'aile:tareas:show-completed:v1'
 const HISTORY_LIMIT = 30
 
 type HistoryEntry = {
@@ -89,6 +91,7 @@ export function TareasModulePage() {
   const [taskAssignee, setTaskAssignee] = useState('')
   const [taskDirection, setTaskDirection] = useState<DireccionBase | ''>('')
   const [collapsedProjectIds, setCollapsedProjectIds] = useState<string[]>([])
+  const [showCompletedTasks, setShowCompletedTasks] = useState(false)
   const searchParams = useSearchParams()
   const [emailPrefsOpen, setEmailPrefsOpen] = useState(false)
 
@@ -115,8 +118,14 @@ export function TareasModulePage() {
       if (Array.isArray(parsedCollapsed)) {
         setCollapsedProjectIds(parsedCollapsed.filter((item): item is string => typeof item === 'string'))
       }
+
+      const rawShowCompleted = window.localStorage.getItem(SHOW_COMPLETED_TASKS_STORAGE_KEY)
+      if (rawShowCompleted !== null) {
+        setShowCompletedTasks(rawShowCompleted === 'true')
+      }
     } catch {
       setCollapsedProjectIds([])
+      setShowCompletedTasks(false)
     } finally {
       setPreferencesLoaded(true)
     }
@@ -125,7 +134,8 @@ export function TareasModulePage() {
   useEffect(() => {
     if (!preferencesLoaded) return
     window.localStorage.setItem(COLLAPSED_PROJECTS_STORAGE_KEY, JSON.stringify(collapsedProjectIds))
-  }, [collapsedProjectIds, preferencesLoaded])
+    window.localStorage.setItem(SHOW_COMPLETED_TASKS_STORAGE_KEY, String(showCompletedTasks))
+  }, [collapsedProjectIds, preferencesLoaded, showCompletedTasks])
 
   useEffect(() => {
     setCollapsedProjectIds((prev) => {
@@ -176,6 +186,17 @@ export function TareasModulePage() {
     return [...internalProjects, ...institutionalForDirection]
   }, [accessByProject, activeProjects, institutionalProjects, selectedDirection, tareas.tasksByProjectId])
 
+  const getProjectTasks = useCallback((
+    project: ProyectoTarea,
+    mode: 'institucional' | 'direcciones'
+  ) => (
+    mode === 'direcciones' && project.tipo === 'institucional'
+      ? (tareas.tasksByProjectId.get(project.id) || []).filter(
+        (task) => task.direccion_responsable === selectedDirection
+      )
+      : (tareas.tasksByProjectId.get(project.id) || [])
+  ), [selectedDirection, tareas.tasksByProjectId])
+
   const canCreateAnyProject = useMemo(
     () => (
       canCreateInstitutionalProject()
@@ -189,9 +210,27 @@ export function TareasModulePage() {
     return tareas.tareas.filter((task) => task.asignado_usuario_id === user.id).length
   }, [tareas.tareas, user])
 
+  const activeTasksCount = useMemo(
+    () => tareas.tareas.filter((task) => task.estado !== 'completada').length,
+    [tareas.tareas]
+  )
+
   const readOnlyProjects = useMemo(
     () => activeProjects.filter((project) => accessByProject.get(project.id)?.readOnly).length,
     [accessByProject, activeProjects]
+  )
+
+  const activeViewMode = activeTab === 'institucional' ? 'institucional' : 'direcciones'
+  const projectsInActiveView = activeTab === 'institucional' ? institutionalProjects : directionProjects
+
+  const completedTasksInActiveView = useMemo(
+    () => projectsInActiveView.reduce(
+      (total, project) => total + getProjectTasks(project, activeViewMode).filter(
+        (task) => task.estado === 'completada'
+      ).length,
+      0
+    ),
+    [activeViewMode, getProjectTasks, projectsInActiveView]
   )
 
   const moveProjectInView = useCallback(async (
@@ -427,11 +466,7 @@ export function TareasModulePage() {
     return (
       <div className="space-y-4">
         {projects.map((project, index) => {
-          const projectTasks = mode === 'direcciones' && project.tipo === 'institucional'
-            ? (tareas.tasksByProjectId.get(project.id) || []).filter(
-              (task) => task.direccion_responsable === selectedDirection
-            )
-            : (tareas.tasksByProjectId.get(project.id) || [])
+          const projectTasks = getProjectTasks(project, mode)
           const baseAccess = accessByProject.get(project.id) || tareas.projectAccess(project)
           const hasTaskLevelManagement = projectTasks.some((task) => tareas.canManageTask(task))
           const scopedAccess = hasTaskLevelManagement
@@ -475,6 +510,7 @@ export function TareasModulePage() {
               onCreateSubtask={tareas.createSubtask}
               onSendToCd={tareas.sendTaskToCd}
               onResolveCd={tareas.resolveTaskCd}
+              showCompletedTasks={showCompletedTasks}
               isCollapsed={collapsedProjectIdSet.has(project.id)}
               onToggleCollapse={() => toggleProjectCollapsed(project.id)}
               canMoveUp={index > 0}
@@ -557,7 +593,7 @@ export function TareasModulePage() {
             <CardTitle className="text-sm text-muted-foreground">Tareas activas</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold text-foreground">{tareas.tareas.length}</p>
+            <p className="text-2xl font-bold text-foreground">{activeTasksCount}</p>
           </CardContent>
         </Card>
         <Card className="border-border/80">
@@ -599,6 +635,29 @@ export function TareasModulePage() {
           </AlertDescription>
         </Alert>
       )}
+
+      <div className="flex flex-col gap-3 rounded-2xl border border-border/80 bg-background/80 p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-1">
+          <p className="text-sm font-semibold text-foreground">Tareas completadas</p>
+          <p className="text-sm text-muted-foreground">
+            {completedTasksInActiveView === 0
+              ? 'No hay tareas completadas en esta vista.'
+              : showCompletedTasks
+                ? `Mostrando ${completedTasksInActiveView} tarea${completedTasksInActiveView === 1 ? '' : 's'} completada${completedTasksInActiveView === 1 ? '' : 's'}.`
+                : `${completedTasksInActiveView} tarea${completedTasksInActiveView === 1 ? '' : 's'} completada${completedTasksInActiveView === 1 ? ' está oculta' : 's están ocultas'} por defecto.`}
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <Label htmlFor="show-completed-tasks" className="text-sm font-medium">
+            Mostrar completadas
+          </Label>
+          <Switch
+            id="show-completed-tasks"
+            checked={showCompletedTasks}
+            onCheckedChange={setShowCompletedTasks}
+          />
+        </div>
+      </div>
 
       <Tabs
         value={activeTab}

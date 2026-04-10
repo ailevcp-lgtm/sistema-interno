@@ -22,6 +22,7 @@ import {
   Trash2,
 } from 'lucide-react'
 import { cn, formatDate, formatDateTime } from '@/lib/utils'
+import { REUNION_DIRECCION_ALERT_THRESHOLD_DAYS } from '@/lib/reuniones'
 import { supabase } from '@/lib/supabase'
 import { useRequireAuth } from '@/hooks/useAuth'
 import {
@@ -670,7 +671,7 @@ function PanelFrecuencia({ datos }: PanelFrecuenciaProps) {
           Frecuencia de reuniones por dirección
         </CardTitle>
         <p className="text-sm text-muted-foreground">
-          Cada dirección debe reunirse al menos cada 14 días
+          Cada dirección debe reunirse al menos cada {REUNION_DIRECCION_ALERT_THRESHOLD_DAYS} días
         </p>
       </CardHeader>
       <CardContent>

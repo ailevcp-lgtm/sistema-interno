@@ -65,6 +65,8 @@ export function getSubjectForNotification(data: EmailNotificationData): string {
       return `Tarea actualizada: ${data.tarea_titulo}`
     case 'tarea_vencimiento_proximo':
       return `Recordatorio: [${data.proyecto_nombre}] "${data.tarea_titulo}" vence ${data.dias_restantes === 0 ? 'hoy' : `en ${data.dias_restantes} día${data.dias_restantes > 1 ? 's' : ''}`}`
+    case 'tareas_vencidas_resumen':
+      return `Resumen diario: tienes ${data.cantidad_tareas} tarea${data.cantidad_tareas === 1 ? '' : 's'} vencida${data.cantidad_tareas === 1 ? '' : 's'}`
     case 'subtarea_creada':
       return `Nueva subtarea en: ${data.tarea_titulo}`
     case 'handoff_solicitado':
@@ -84,6 +86,8 @@ export function getSubjectForNotification(data: EmailNotificationData): string {
       return `Reunión cancelada: ${data.reunion_titulo}`
     case 'calendario_planificacion_definitiva':
       return `Fecha confirmada: ${data.planificacion_titulo}`
+    case 'reunion_asistencia_pendiente_recordatorio':
+      return `Recordatorio: registrá la asistencia de "${data.reunion_titulo}" (${new Date(data.reunion_fecha).toLocaleDateString('es-AR')})`
     // Resoluciones y Decretos
     case 'resolucion_nueva':
       return `Nueva resolución CD: Res. ${data.resolucion_numero}/${data.resolucion_anio} - ${data.resolucion_titulo}`
