@@ -484,11 +484,14 @@ export function useComunicaciones() {
     return data as { sent: number; failed: number }
   }, [loadAll])
 
-  const sendCampaign = useCallback(async (campaignId: string) => {
+  const sendCampaign = useCallback(async (
+    campaignId: string,
+    campaign?: Omit<CommunicationCampaign, 'id' | 'created_at' | 'updated_at'>
+  ) => {
     const response = await fetch('/api/communications/send-campaign', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ campaignId }),
+      body: JSON.stringify({ campaignId, campaign }),
     })
 
     const data = await response.json()

@@ -52,4 +52,5 @@ export const communicationSendTestSchema = z.object({
 
 export const communicationSendCampaignSchema = z.object({
   campaignId: z.string().uuid(),
+  campaign: communicationCampaignDraftSchema.optional(),
 })

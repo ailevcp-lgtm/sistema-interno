@@ -1114,14 +1114,50 @@ export async function syncContactsFromMongo(actorUserId: string) {
 }
 
 export async function sendSavedCampaign(input: unknown) {
-  const { campaignId } = communicationSendCampaignSchema.parse(input)
+  const parsed = communicationSendCampaignSchema.parse(input)
+  const { campaignId } = parsed
   const serviceSupabase = getServiceSupabase()
-  const campaign = await resolveCampaignById(campaignId)
-  const filters = communicationCampaignFiltersSchema.parse(parseJsonObject(campaign.filters_json, {}))
+  const persistedCampaign = await resolveCampaignById(campaignId)
 
-  if (!['draft', 'test_sent', 'failed'].includes(campaign.status)) {
+  if (!['draft', 'test_sent', 'failed'].includes(persistedCampaign.status)) {
     throw new Error('La campana no esta en un estado enviable')
   }
+
+  const overrideFilters = parsed.campaign
+    ? sanitizeFilters(parsed.campaign.filters_json)
+    : communicationCampaignFiltersSchema.parse(parseJsonObject(persistedCampaign.filters_json, {}))
+
+  const campaignOverride = parsed.campaign
+    ? {
+        name: parsed.campaign.name,
+        subject: parsed.campaign.subject,
+        preheader: parsed.campaign.preheader || null,
+        sender_name: parsed.campaign.sender_name,
+        sender_email: parsed.campaign.sender_email,
+        template_id: parsed.campaign.template_id || null,
+        content_json: parsed.campaign.content_json,
+        selection_mode: parsed.campaign.selection_mode,
+        filters_json: overrideFilters,
+      }
+    : null
+
+  if (campaignOverride) {
+    const { error: saveError } = await serviceSupabase
+      .from('email_campaigns')
+      .update({
+        ...campaignOverride,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', campaignId)
+
+    if (saveError) throw saveError
+  }
+
+  const campaign = {
+    ...persistedCampaign,
+    ...(campaignOverride || {}),
+  } as CommunicationCampaign
+  const filters = communicationCampaignFiltersSchema.parse(overrideFilters)
 
   assertCampaignIsSendable(campaign)
 

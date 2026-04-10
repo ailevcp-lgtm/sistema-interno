@@ -538,8 +538,7 @@ export function ComunicacionesPage() {
 
     try {
       setSendingCampaignId(campaignDraft.id)
-      await saveCampaign(buildCampaignSaveInput(), { silent: true })
-      const result = await sendCampaign(campaignDraft.id)
+      const result = await sendCampaign(campaignDraft.id, buildCampaignSaveInput())
       toast.success(`Campana procesada. Enviados: ${result.sent}. Fallidos: ${result.failed}.`)
       setSendConfirmOpen(false)
       setCampaignEditorOpen(false)
