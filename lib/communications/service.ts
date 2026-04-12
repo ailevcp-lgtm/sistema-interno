@@ -1161,7 +1161,11 @@ export async function sendSavedCampaign(input: unknown) {
 
   assertCampaignIsSendable(campaign)
 
+  console.log('[sendSavedCampaign] selection_mode:', campaign.selection_mode)
+  console.log('[sendSavedCampaign] filters:', JSON.stringify(filters))
+  console.log('[sendSavedCampaign] parsed.campaign defined:', Boolean(parsed.campaign))
   const contacts = await resolveContactsForCampaign(filters, campaign.selection_mode)
+  console.log('[sendSavedCampaign] contacts count:', contacts.length)
   if (!contacts.length) {
     throw new Error('No hay destinatarios seleccionados para esta campana')
   }
