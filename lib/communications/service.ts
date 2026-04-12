@@ -703,7 +703,7 @@ async function resolveContactsForCampaign(
 
   return contacts.filter((contact) => {
     const contactTags = new Set((contact.tags || []).map((tag) => tag.toLowerCase()))
-    const matchesTags = normalizedFilters.tags?.some((tag) => contactTags.has(tag)) ?? true
+    const matchesTags = !normalizedFilters.tags?.length || normalizedFilters.tags.some((tag) => contactTags.has(tag))
     const matchesAge = matchesAgeRange(contact.birth_date, normalizedFilters.minAge, normalizedFilters.maxAge)
     return matchesTags && matchesAge
   })
@@ -1161,11 +1161,7 @@ export async function sendSavedCampaign(input: unknown) {
 
   assertCampaignIsSendable(campaign)
 
-  console.log('[sendSavedCampaign] selection_mode:', campaign.selection_mode)
-  console.log('[sendSavedCampaign] filters:', JSON.stringify(filters))
-  console.log('[sendSavedCampaign] parsed.campaign defined:', Boolean(parsed.campaign))
   const contacts = await resolveContactsForCampaign(filters, campaign.selection_mode)
-  console.log('[sendSavedCampaign] contacts count:', contacts.length)
   if (!contacts.length) {
     throw new Error('No hay destinatarios seleccionados para esta campana')
   }
