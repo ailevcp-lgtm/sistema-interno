@@ -4,7 +4,10 @@ export const communicationContentSchema = z.object({
   title: z.string().trim().min(1, 'El titulo es obligatorio'),
   body: z.string().trim().min(1, 'El cuerpo es obligatorio'),
   ctaLabel: z.string().trim().max(120).nullable().optional(),
-  ctaUrl: z.string().trim().url('La URL del boton principal no es valida').nullable().optional(),
+  ctaUrl: z.preprocess(
+    (val) => (typeof val === 'string' && !val.trim() ? null : val),
+    z.string().trim().url('La URL del boton principal no es valida').nullable().optional()
+  ),
   footerNote: z.string().trim().max(240).nullable().optional(),
 })
 

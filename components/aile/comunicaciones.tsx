@@ -101,7 +101,7 @@ function emptyContent(): CommunicationEmailContent {
     title: '',
     body: '',
     ctaLabel: '',
-    ctaUrl: '',
+    ctaUrl: null,
     footerNote: 'Gracias por seguir formando parte de AILE.',
   }
 }
@@ -240,7 +240,7 @@ function toCampaignDraft(campaign: CommunicationCampaign) {
       title: campaign.content_json?.title || '',
       body: campaign.content_json?.body || '',
       ctaLabel: campaign.content_json?.ctaLabel || '',
-      ctaUrl: campaign.content_json?.ctaUrl || '',
+      ctaUrl: campaign.content_json?.ctaUrl || null,
       footerNote: campaign.content_json?.footerNote || '',
     },
   }
@@ -253,7 +253,7 @@ function toTemplateDraft(template: CommunicationTemplate) {
       title: template.content_json?.title || '',
       body: template.content_json?.body || '',
       ctaLabel: template.content_json?.ctaLabel || '',
-      ctaUrl: template.content_json?.ctaUrl || '',
+      ctaUrl: template.content_json?.ctaUrl || null,
       footerNote: template.content_json?.footerNote || '',
     },
   }
