@@ -57,3 +57,7 @@ export const communicationSendCampaignSchema = z.object({
   campaignId: z.string().uuid(),
   campaign: communicationCampaignDraftSchema.optional(),
 })
+
+export const communicationRetryFailedSchema = z.object({
+  campaignId: z.string().uuid(),
+})

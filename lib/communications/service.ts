@@ -16,6 +16,7 @@ import type {
 import {
   communicationCampaignFiltersSchema,
   communicationPreviewSchema,
+  communicationRetryFailedSchema,
   communicationSendCampaignSchema,
   communicationSendTestSchema,
 } from './schemas'
@@ -1308,6 +1309,102 @@ export async function sendSavedCampaign(input: unknown) {
     failed: failedCount,
     status: finalStatus,
   }
+}
+
+export async function retryFailedCampaignRecipients(input: unknown) {
+  const parsed = communicationRetryFailedSchema.parse(input)
+  const { campaignId } = parsed
+  const serviceSupabase = getServiceSupabase()
+
+  const campaign = await resolveCampaignById(campaignId)
+
+  if (!['sent', 'failed'].includes(campaign.status)) {
+    throw new Error('Solo se pueden reintentar campanas ya procesadas')
+  }
+
+  const { data: failedRows, error: failedError } = await serviceSupabase
+    .from('email_campaign_recipients')
+    .select('*')
+    .eq('campaign_id', campaignId)
+    .eq('delivery_status', 'failed')
+
+  if (failedError) throw failedError
+  if (!failedRows?.length) throw new Error('No hay destinatarios fallidos para reintentar')
+
+  const contactIds = failedRows.map((row) => row.contact_id).filter(Boolean) as string[]
+
+  const { data: contactRows, error: contactsError } = await serviceSupabase
+    .from('email_contacts')
+    .select('id, email, full_name, first_name, last_name, status, unsubscribed, bounced')
+    .in('id', contactIds)
+
+  if (contactsError) throw contactsError
+
+  const contactsById = new Map((contactRows || []).map((c) => [c.id, c as Pick<CommunicationContact, 'id' | 'email' | 'full_name' | 'first_name' | 'last_name' | 'status' | 'unsubscribed' | 'bounced'>]))
+
+  const targets: Array<{ recipient: CommunicationCampaignRecipient; contact: Pick<CommunicationContact, 'id' | 'email' | 'full_name' | 'first_name' | 'last_name'> }> = []
+  const recipientIds: string[] = []
+
+  for (const row of failedRows as CommunicationCampaignRecipient[]) {
+    if (!row.contact_id) continue
+    const contact = contactsById.get(row.contact_id)
+    if (!contact || contact.status !== 'active' || contact.unsubscribed || contact.bounced) continue
+    targets.push({ recipient: row, contact })
+    recipientIds.push(row.id)
+  }
+
+  if (!targets.length) throw new Error('No hay destinatarios fallidos validos para reintentar')
+
+  const { error: statusError } = await serviceSupabase
+    .from('email_campaigns')
+    .update({ status: 'sending', last_error: null })
+    .eq('id', campaignId)
+
+  if (statusError) throw statusError
+
+  await serviceSupabase
+    .from('email_campaign_recipients')
+    .update({ delivery_status: 'pending', error_message: null })
+    .in('id', recipientIds)
+
+  const sender = formatSender(campaign.sender_name, campaign.sender_email)
+  const resend = getResendClient()
+  const sendRunId = randomUUID()
+  let sentCount = 0
+  let failedCount = 0
+
+  const emailTargets = targets.map(({ contact, recipient }) =>
+    buildCampaignEmailTarget({ campaignId, campaign, sender, contact, recipient })
+  )
+
+  for (const [batchIndex, batch] of chunkArray(emailTargets, RESEND_SEND_BATCH_SIZE).entries()) {
+    const results = await sendCampaignBatch({ resend, batch, sendRunId, batchIndex })
+    sentCount += results.filter((r) => r.status === 'sent').length
+    failedCount += results.filter((r) => r.status === 'failed').length
+    await persistCampaignSendResults({ serviceSupabase, campaignId, results })
+  }
+
+  const finalStatus: CommunicationCampaign['status'] = sentCount > 0 ? 'sent' : 'failed'
+  const prevSnapshot = typeof campaign.recipient_count_snapshot === 'object' && campaign.recipient_count_snapshot !== null
+    ? campaign.recipient_count_snapshot as Record<string, number>
+    : {}
+
+  await updateCampaignStatus(campaignId, finalStatus, {
+    last_error: failedCount > 0 ? `Hubo ${failedCount} destinatarios fallidos tras reintento.` : null,
+    recipient_count_snapshot: {
+      ...prevSnapshot,
+      sent: (prevSnapshot.sent || 0) + sentCount,
+      failed: (prevSnapshot.failed || 0) - sentCount,
+    },
+  })
+
+  await insertEmailEvent({
+    campaignId,
+    eventType: 'campaign_completed',
+    body: { retry: true, retried: targets.length, sent: sentCount, failed: failedCount },
+  })
+
+  return { retried: targets.length, sent: sentCount, failed: failedCount }
 }
 
 export async function processUnsubscribeToken(token: string) {

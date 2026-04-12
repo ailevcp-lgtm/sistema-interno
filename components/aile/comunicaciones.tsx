@@ -8,6 +8,7 @@ import {
   Pencil,
   Plus,
   RefreshCcw,
+  RefreshCw,
   Send,
   Shield,
   Tags,
@@ -322,6 +323,7 @@ export function ComunicacionesPage() {
     requestPreview,
     sendTest,
     sendCampaign,
+    retryFailed,
     syncContacts,
     grantModuleAccess,
     revokeModuleAccess,
@@ -346,6 +348,7 @@ export function ComunicacionesPage() {
   const [testEmailsDraft, setTestEmailsDraft] = useState('')
   const [sendConfirmOpen, setSendConfirmOpen] = useState(false)
   const [sendingCampaignId, setSendingCampaignId] = useState<string | null>(null)
+  const [retryingCampaignId, setRetryingCampaignId] = useState<string | null>(null)
   const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(null)
 
   const [templateEditorOpen, setTemplateEditorOpen] = useState(false)
@@ -547,6 +550,18 @@ export function ComunicacionesPage() {
       toast.error(error instanceof Error ? error.message : 'No se pudo enviar la campana')
     } finally {
       setSendingCampaignId(null)
+    }
+  }
+
+  const handleRetryFailed = async (campaignId: string) => {
+    try {
+      setRetryingCampaignId(campaignId)
+      const result = await retryFailed(campaignId)
+      toast.success(`Reintento completado. Enviados: ${result.sent}. Fallidos: ${result.failed}.`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No se pudo reintentar los fallidos')
+    } finally {
+      setRetryingCampaignId(null)
     }
   }
 
@@ -1325,6 +1340,17 @@ export function ComunicacionesPage() {
                       <MetricCard label="Fallidos" value={campaignSnapshotNumber(currentCampaign.recipient_count_snapshot, 'failed')} />
                       <MetricCard label="Omitidos" value={campaignSnapshotNumber(currentCampaign.recipient_count_snapshot, 'skipped')} />
                     </div>
+                    {campaignSnapshotNumber(currentCampaign.recipient_count_snapshot, 'failed') > 0 && ['sent', 'failed'].includes(currentCampaign.status) ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={Boolean(retryingCampaignId)}
+                        onClick={() => void handleRetryFailed(currentCampaign.id)}
+                      >
+                        {retryingCampaignId === currentCampaign.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+                        Reintentar fallidos
+                      </Button>
+                    ) : null}
 
                     <div className="space-y-3 md:hidden">
                       {currentCampaignRecipients.map((recipient) => (

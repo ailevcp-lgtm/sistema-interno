@@ -504,6 +504,23 @@ export function useComunicaciones() {
     return data
   }, [loadAll, loadCampaignRecipients])
 
+  const retryFailed = useCallback(async (campaignId: string) => {
+    const response = await fetch('/api/communications/retry-failed', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ campaignId }),
+    })
+
+    const data = await response.json()
+    if (!response.ok) {
+      throw new Error(data.error || 'No se pudo reintentar los fallidos')
+    }
+
+    await loadAll()
+    await loadCampaignRecipients(campaignId)
+    return data as { retried: number; sent: number; failed: number }
+  }, [loadAll, loadCampaignRecipients])
+
   const syncContacts = useCallback(async () => {
     const response = await fetch('/api/communications/sync-contacts', {
       method: 'POST',
@@ -577,6 +594,7 @@ export function useComunicaciones() {
     requestPreview,
     sendTest,
     sendCampaign,
+    retryFailed,
     syncContacts,
     grantModuleAccess,
     revokeModuleAccess,
