@@ -1,6 +1,18 @@
-# MCP de Tareas Local
+# MCP del Sistema Interno AILE
 
-Primera versión local del MCP de tareas para AILE.
+El mismo servidor MCP expone herramientas de tareas y del archivo documental legal de AILE.
+
+## Documentos legales
+
+Herramientas disponibles en local y remoto:
+
+- `aile_documents_list`: busca actas, estatuto, resoluciones y constancias por tipo, estado o año.
+- `aile_documents_get`: devuelve metadatos y una URL privada válida durante cinco minutos.
+- `aile_documents_update_metadata`: actualiza estado jurídico y metadatos, sin sobrescribir el PDF original.
+
+El MCP local agrega `aile_documents_upload_local_pdf`, que recibe una ruta absoluta del equipo, valida que sea PDF, calcula SHA-256, evita duplicados y lo sube al bucket privado `documentos-legales`. Se recomienda ejecutar primero con `dry_run: true`.
+
+Para operar con archivos locales hay que configurar `AILE_MCP_ACTOR_SOCIO_ID` o `AILE_MCP_ACTOR_EMAIL`. El actor debe ser administrador o miembro de Comisión Directiva.
 
 Objetivo de este corte:
 - reutilizar el modelo real de tareas del sistema

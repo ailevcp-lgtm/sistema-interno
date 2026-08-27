@@ -9,7 +9,9 @@
     "start": "next start",
     "lint": "eslint .",
     "mcp:tareas": "node mcp/tareas/server.mjs",
-    "mcp:tareas:readonly": "node mcp/tareas/server.mjs"
+    "mcp:tareas:readonly": "node mcp/tareas/server.mjs",
+    "mcp:aile": "node mcp/tareas/server.mjs",
+    "documents:import-legal": "node scripts/import-legal-documents.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",

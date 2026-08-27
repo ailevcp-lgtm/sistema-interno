@@ -8,6 +8,8 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { createTasksReadonlyDataSource, tasksReadonlyInternals } from './data.mjs';
 import { createTasksMutationService } from './write.mjs';
+import { createLocalDocumentsService } from '../documentos/service.mjs';
+import { registerDocumentTools } from '../documentos/register-tools.mjs';
 
 const CURRENT_FILE = fileURLToPath(import.meta.url);
 const CURRENT_DIR = path.dirname(CURRENT_FILE);
@@ -18,8 +20,8 @@ loadDotenv({ path: path.join(REPO_ROOT, '.env.local'), override: true, quiet: tr
 
 const server = new McpServer(
   {
-    name: 'aile-tareas-local',
-    version: '0.1.0',
+    name: 'aile-interno-local',
+    version: '0.2.0',
   },
   {
     capabilities: {
@@ -39,6 +41,15 @@ const mutationService = createTasksMutationService({
   defaultActorSocioId: process.env.AILE_MCP_ACTOR_SOCIO_ID,
   defaultActorEmail: process.env.AILE_MCP_ACTOR_EMAIL,
 });
+
+const documentsService = createLocalDocumentsService({
+  supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
+  serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
+  actorSocioId: process.env.AILE_MCP_ACTOR_SOCIO_ID,
+  actorEmail: process.env.AILE_MCP_ACTOR_EMAIL,
+});
+
+registerDocumentTools(server, documentsService, { local: true });
 
 const directionDescription = 'Acepta CEA, Finanzas, Recursos Humanos o Comunicación.';
 const taskStateDescription = [
@@ -319,7 +330,7 @@ server.registerTool(
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error('AILE tareas MCP local escuchando por stdio');
+  console.error('AILE MCP local (tareas y documentos) escuchando por stdio');
 }
 
 main().catch((error) => {

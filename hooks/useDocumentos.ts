@@ -6,6 +6,7 @@ import {
     Balance,
     TipoResolucion,
 } from '@/lib/types'
+import type { DocumentoLegal } from '@/lib/legal-documents'
 import { toast } from 'sonner'
 import { runWithRecovery } from '@/lib/async-recovery'
 import { sendEmailNotificationFromClient } from '@/lib/email/client'
@@ -39,6 +40,43 @@ function sanitizeResolutionRow(row: Resolucion): Resolucion {
 
 export function useDocumentos() {
     const [loading, setLoading] = useState(false)
+
+    const getDocumentosLegales = useCallback(async () => {
+        try {
+            setLoading(true)
+            const { data, error } = await runWithRecovery(() => supabase
+                .from('documentos_legales')
+                .select('*')
+                .order('fecha_documento', { ascending: false, nullsFirst: false })
+                .order('created_at', { ascending: false }), {
+                    label: 'documentos legales',
+                })
+
+            if (error) throw error
+            return (data || []) as DocumentoLegal[]
+        } catch (error) {
+            console.error('Error fetching legal documents:', error)
+            toast.error('Error al cargar el archivo legal')
+            return []
+        } finally {
+            setLoading(false)
+        }
+    }, [])
+
+    const getDocumentoLegalSignedUrl = useCallback(async (documento: DocumentoLegal) => {
+        const { data, error } = await supabase.storage
+            .from(documento.bucket)
+            .createSignedUrl(documento.storage_path, 60 * 5, {
+                download: documento.nombre_archivo,
+            })
+
+        if (error || !data?.signedUrl) {
+            toast.error('No se pudo abrir el documento legal')
+            throw error || new Error('Supabase no devolvió una URL firmada')
+        }
+
+        return data.signedUrl
+    }, [])
 
     // -- ESTATUTO --
     // -- ESTATUTO --
@@ -514,6 +552,8 @@ export function useDocumentos() {
 
     return {
         loading,
+        getDocumentosLegales,
+        getDocumentoLegalSignedUrl,
         getEstatuto,
         createArticulo,
         updateArticulo,

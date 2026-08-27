@@ -3,6 +3,8 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { createTasksReadonlyDataSource, tasksReadonlyInternals } from './data.mjs';
 import { createAuthenticatedSupabaseClient } from './remote-auth.mjs';
 import { createTasksRemoteMutationService } from './remote-write.mjs';
+import { createRemoteDocumentsService } from '../documentos/service.mjs';
+import { registerDocumentTools } from '../documentos/register-tools.mjs';
 
 export function createRemoteTareasMcpServer({
   supabaseUrl,
@@ -23,11 +25,15 @@ export function createRemoteTareasMcpServer({
     accessToken,
     authInfo,
   });
+  const documentsService = createRemoteDocumentsService({
+    supabaseClient,
+    actor: authInfo?.extra?.actor,
+  });
 
   const server = new McpServer(
     {
-      name: 'aile-tareas-remote',
-      version: '0.2.0',
+      name: 'aile-interno-remote',
+      version: '0.3.0',
     },
     {
       capabilities: {
@@ -35,6 +41,8 @@ export function createRemoteTareasMcpServer({
       },
     }
   );
+
+  registerDocumentTools(server, documentsService);
 
   const directionDescription = 'Acepta CEA, Finanzas, Recursos Humanos o Comunicación.';
   const taskStateDescription = [

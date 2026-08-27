@@ -18,6 +18,6 @@ export async function GET() {
   return Response.json({
     resource: resourceServerUrl.toString(),
     authorization_servers: [authorizationServerUrl.toString()],
-    resource_name: 'AILE MCP Tareas',
+    resource_name: 'AILE Sistema Interno MCP',
   })
 }

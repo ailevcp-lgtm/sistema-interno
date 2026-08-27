@@ -1,6 +1,6 @@
 "use client"
 
-import { Download, ChevronDown, ChevronRight, BookOpen, Scale, Gavel, BarChart2, Plus, FileText, Upload, Eye, Bell, Pencil, Trash2, Loader2 } from "lucide-react"
+import { Download, ChevronDown, ChevronRight, BookOpen, Scale, Gavel, BarChart2, Plus, FileText, Upload, Eye, Bell, Pencil, Trash2, Loader2, ShieldCheck, LockKeyhole } from "lucide-react"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils"
 import { useDocumentos } from "@/hooks/useDocumentos"
 import { formatDate } from "@/lib/utils"
 import type { ArticuloEstatuto, Resolucion, Balance, TipoResolucion } from "@/lib/types"
+import type { DocumentoLegal, TipoDocumentoLegal } from "@/lib/legal-documents"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { useAuth } from "@/hooks/useAuth"
@@ -18,6 +19,7 @@ import { supabase } from "@/lib/supabase"
 import { ResolutionEditor } from "@/components/aile/resolution-editor"
 import { sanitizeRichHtml } from "@/lib/html-sanitizer"
 import { toast } from "sonner"
+import { LegalDocumentUploadDialog } from "@/components/aile/legal-document-upload-dialog"
 import {
   Tooltip,
   TooltipContent,
@@ -32,13 +34,14 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 
-type DocTab = "estatuto" | "resoluciones" | "decretos" | "balances"
+type DocTab = "archivo-legal" | "estatuto" | "resoluciones" | "decretos" | "balances"
 
 function isDocTab(value: string | null): value is DocTab {
-  return value === "estatuto" || value === "resoluciones" || value === "decretos" || value === "balances"
+  return value === "archivo-legal" || value === "estatuto" || value === "resoluciones" || value === "decretos" || value === "balances"
 }
 
 const tabs: { id: DocTab; label: string; icon: typeof BookOpen }[] = [
+  { id: "archivo-legal", label: "Archivo legal", icon: ShieldCheck },
   { id: "estatuto", label: "Estatuto", icon: BookOpen },
   { id: "resoluciones", label: "Resoluciones", icon: Scale },
   { id: "decretos", label: "Decretos CD", icon: Gavel },
@@ -51,6 +54,12 @@ const estadoStyles: Record<string, { bg: string; color: string }> = {
   aprobado_asamblea: { bg: "#ede5f7", color: "#6314a7" },
   aprobado_cd: { bg: "#fef3c7", color: "#b45309" },
   borrador: { bg: "#f3f4f6", color: "#6b7280" },
+  pendiente_firma: { bg: "#fff7ed", color: "#c2410c" },
+  firmado: { bg: "#eff6ff", color: "#1d4ed8" },
+  presentado_ipj: { bg: "#fef3c7", color: "#b45309" },
+  inscripto_ipj: { bg: "#ecfdf5", color: "#047857" },
+  rechazado: { bg: "#fef2f2", color: "#dc2626" },
+  reemplazado: { bg: "#f3f4f6", color: "#6b7280" },
 }
 
 const estadoLabels: Record<string, string> = {
@@ -59,22 +68,39 @@ const estadoLabels: Record<string, string> = {
   aprobado_asamblea: "Aprobado por Asamblea",
   aprobado_cd: "Aprobado por CD",
   borrador: "Borrador",
+  pendiente_firma: "Pendiente de firma",
+  firmado: "Firmado",
+  presentado_ipj: "Presentado ante IPJ",
+  inscripto_ipj: "Inscripto en IPJ",
+  rechazado: "Rechazado",
+  reemplazado: "Reemplazado",
+}
+
+const legalTypeLabels: Record<TipoDocumentoLegal, string> = {
+  acta_constitutiva_estatuto: "Acta constitutiva y estatuto",
+  acta_cd: "Acta de Comisión Directiva",
+  acta_asamblea: "Acta de Asamblea",
+  resolucion_cd: "Resolución de Comisión Directiva",
+  constancia_ipj: "Constancia IPJ",
+  libro_digital: "Libro digital",
+  otro: "Otro documento legal",
 }
 
 export function DocumentosPage() {
   const searchParams = useSearchParams()
   const tabFromUrl = searchParams.get("tab")
-  const [activeTab, setActiveTab] = useState<DocTab>("estatuto")
+  const [activeTab, setActiveTab] = useState<DocTab>("archivo-legal")
   const [expandedArticle, setExpandedArticle] = useState<string | null>(null)
   const {
     getEstatuto,
     getResoluciones,
     getBalances,
-    getConfig,
     deleteBalance,
     notifyBalanceUpload,
     createResolucion,
     updateResolucion,
+    getDocumentosLegales,
+    getDocumentoLegalSignedUrl,
   } = useDocumentos()
   const { user, hasPermission } = useAuth()
 
@@ -82,8 +108,9 @@ export function DocumentosPage() {
   const [resoluciones, setResoluciones] = useState<Resolucion[]>([])
   const [decretos, setDecretos] = useState<Resolucion[]>([])
   const [balances, setBalances] = useState<Balance[]>([])
+  const [documentosLegales, setDocumentosLegales] = useState<DocumentoLegal[]>([])
   const [tabLoading, setTabLoading] = useState(true)
-  const [estatutoPdfUrl, setEstatutoPdfUrl] = useState<string | null>(null)
+  const [estatutoOficial, setEstatutoOficial] = useState<DocumentoLegal | null>(null)
   const [selectedNorma, setSelectedNorma] = useState<Resolucion | null>(null)
   const [resolutionEditorOpen, setResolutionEditorOpen] = useState(false)
   const [editingResolution, setEditingResolution] = useState<Resolucion | null>(null)
@@ -93,27 +120,37 @@ export function DocumentosPage() {
   const [editingBalance, setEditingBalance] = useState<Balance | null>(null)
   const [notifyingBalanceId, setNotifyingBalanceId] = useState<string | null>(null)
   const [deletingBalanceId, setDeletingBalanceId] = useState<string | null>(null)
+  const [isLegalUploadOpen, setIsLegalUploadOpen] = useState(false)
+  const [openingLegalDocumentId, setOpeningLegalDocumentId] = useState<string | null>(null)
 
   const canCreateBalance = hasPermission("balances", "crear")
   const canEditBalance = hasPermission("balances", "editar")
   const canDeleteBalance = hasPermission("balances", "eliminar")
   const canCreateResolution = hasPermission("resoluciones", "crear")
   const canEditResolution = hasPermission("resoluciones", "editar")
+  const canCreateLegalDocument = hasPermission("documentos", "crear")
   const canNotifyBalance = canCreateBalance || canEditBalance
   const showHeaderActions =
+    (activeTab === "archivo-legal" && canCreateLegalDocument) ||
     (activeTab === "balances" && canCreateBalance) ||
     ((activeTab === "resoluciones" || activeTab === "decretos") && canCreateResolution)
 
   const loadData = useCallback(async () => {
     try {
       setTabLoading(true)
-      if (activeTab === "estatuto") {
-        const [data, pdfUrl] = await Promise.all([
+      if (activeTab === "archivo-legal") {
+        setDocumentosLegales(await getDocumentosLegales())
+      } else if (activeTab === "estatuto") {
+        const [data, legalDocuments] = await Promise.all([
           getEstatuto(),
-          getConfig("estatuto_pdf_url")
+          getDocumentosLegales(),
         ])
         setArticulos(data)
-        setEstatutoPdfUrl(pdfUrl)
+        setEstatutoOficial(
+          legalDocuments.find((documento) =>
+            documento.tipo === "acta_constitutiva_estatuto" && documento.es_vigente
+          ) || null
+        )
         if (data.length > 0) {
           setExpandedArticle((current) => current || data[0].id)
         }
@@ -130,7 +167,7 @@ export function DocumentosPage() {
     } finally {
       setTabLoading(false)
     }
-  }, [activeTab, getBalances, getConfig, getEstatuto, getResoluciones])
+  }, [activeTab, getBalances, getDocumentosLegales, getEstatuto, getResoluciones])
 
   useEffect(() => {
     if (isDocTab(tabFromUrl)) {
@@ -157,6 +194,25 @@ export function DocumentosPage() {
 
   const handleOpenNorma = (norma: Resolucion) => {
     setSelectedNorma(norma)
+  }
+
+  const handleOpenLegalDocument = async (documento: DocumentoLegal) => {
+    const popup = window.open("about:blank", "_blank")
+    try {
+      setOpeningLegalDocumentId(documento.id)
+      const signedUrl = await getDocumentoLegalSignedUrl(documento)
+      if (popup) {
+        popup.opener = null
+        popup.location.href = signedUrl
+      } else {
+        handleDownload(signedUrl, documento.nombre_archivo)
+      }
+    } catch (error) {
+      popup?.close()
+      throw error
+    } finally {
+      setOpeningLegalDocumentId(null)
+    }
   }
 
   const handleOpenResolutionEditor = (type: TipoResolucion, resolucion?: Resolucion) => {
@@ -241,10 +297,16 @@ export function DocumentosPage() {
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h1 className="text-xl lg:text-2xl font-bold text-foreground">Documentos</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">Estatuto, resoluciones, decretos y balances</p>
+          <p className="text-sm text-muted-foreground mt-0.5">Archivo legal, estatuto, resoluciones, decretos y balances</p>
         </div>
         {showHeaderActions && (
           <div className="flex gap-2">
+            {activeTab === "archivo-legal" && canCreateLegalDocument && (
+              <Button size="sm" className="gap-2" onClick={() => setIsLegalUploadOpen(true)}>
+                <Upload className="w-4 h-4" />
+                <span className="hidden sm:inline">Subir documento legal</span>
+              </Button>
+            )}
             {(activeTab === "resoluciones" || activeTab === "decretos") && canCreateResolution && (
               <Button
                 size="sm"
@@ -300,6 +362,66 @@ export function DocumentosPage() {
         </div>
       ) : (
         <>
+          {/* Archivo legal */}
+          {activeTab === "archivo-legal" && (
+            <div className="flex flex-col gap-4">
+              <Card className="border-l-4 border-l-emerald-600 bg-emerald-50/50 shadow-none dark:bg-emerald-950/10">
+                <CardContent className="flex items-start gap-3 p-4">
+                  <LockKeyhole className="mt-0.5 h-5 w-5 shrink-0 text-emerald-700" />
+                  <div>
+                    <p className="text-sm font-semibold">Repositorio privado de documentación jurídica</p>
+                    <p className="mt-1 text-xs text-muted-foreground">Los archivos pueden contener datos personales y firmas. Se abren mediante enlaces temporales y no quedan expuestos públicamente.</p>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {documentosLegales.length === 0 ? (
+                <div className="rounded-lg border border-dashed p-10 text-center text-sm text-muted-foreground">
+                  Todavía no hay documentos incorporados al archivo legal.
+                </div>
+              ) : (
+                <div className="grid gap-3">
+                  {documentosLegales.map((documento) => {
+                    const statusStyle = estadoStyles[documento.estado_registro] || estadoStyles.borrador
+                    return (
+                      <Card key={documento.id} className="border border-border shadow-none">
+                        <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="flex min-w-0 items-start gap-3">
+                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#ede5f7]">
+                              <FileText className="h-[18px] w-[18px] text-[#6314a7]" />
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="font-medium text-foreground">{documento.titulo}</p>
+                                <Badge variant="secondary" className="border-0 text-[10px]" style={{ backgroundColor: statusStyle.bg, color: statusStyle.color }}>
+                                  {estadoLabels[documento.estado_registro] || documento.estado_registro}
+                                </Badge>
+                                {documento.firma_digital && <Badge variant="outline" className="text-[10px]">Firma digital</Badge>}
+                              </div>
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                {legalTypeLabels[documento.tipo]}
+                                {documento.numero ? ` · N.º ${documento.numero}${documento.anio ? `/${documento.anio}` : ""}` : ""}
+                                {documento.fecha_documento ? ` · ${formatDate(documento.fecha_documento)}` : ""}
+                              </p>
+                              {documento.descripcion && <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{documento.descripcion}</p>}
+                              {documento.componentes.length > 0 && (
+                                <p className="mt-1 text-xs text-muted-foreground">Incluye {documento.componentes.length} pieza(s) documental(es).</p>
+                              )}
+                            </div>
+                          </div>
+                          <Button variant="outline" size="sm" className="gap-2 sm:shrink-0" disabled={openingLegalDocumentId === documento.id} onClick={() => void handleOpenLegalDocument(documento)}>
+                            {openingLegalDocumentId === documento.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
+                            Abrir PDF
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Estatuto */}
           {activeTab === "estatuto" && (
             <div className="flex flex-col gap-4">
@@ -308,9 +430,9 @@ export function DocumentosPage() {
                   <h3 className="font-semibold text-foreground">Estatuto Social Oficial</h3>
                   <p className="text-xs text-muted-foreground">Versión firmada y digitalizada del estatuto vigente.</p>
                 </div>
-                <Button onClick={() => handleDownload(estatutoPdfUrl || undefined, "Estatuto_AILE.pdf")} disabled={!estatutoPdfUrl} size="sm" variant="outline" className="gap-2 bg-background border-[#6314a7]/20 hover:bg-[#6314a7]/5 text-[#6314a7]">
-                  <FileText className="w-4 h-4" />
-                  {estatutoPdfUrl ? 'Descargar PDF' : 'No disponible'}
+                <Button onClick={() => estatutoOficial && void handleOpenLegalDocument(estatutoOficial)} disabled={!estatutoOficial || openingLegalDocumentId === estatutoOficial.id} size="sm" variant="outline" className="gap-2 bg-background border-[#6314a7]/20 hover:bg-[#6314a7]/5 text-[#6314a7]">
+                  {estatutoOficial && openingLegalDocumentId === estatutoOficial.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
+                  {estatutoOficial ? 'Descargar PDF oficial' : 'No disponible'}
                 </Button>
               </Card>
 
@@ -741,6 +863,12 @@ export function DocumentosPage() {
           setEditingBalance(null)
           void loadData()
         }}
+      />
+
+      <LegalDocumentUploadDialog
+        open={isLegalUploadOpen}
+        onOpenChange={setIsLegalUploadOpen}
+        onSaved={() => void loadData()}
       />
 
       <Dialog open={Boolean(selectedNorma)} onOpenChange={(isOpen) => !isOpen && setSelectedNorma(null)}>
