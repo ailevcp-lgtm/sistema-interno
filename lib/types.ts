@@ -15,6 +15,7 @@ export interface Notificacion {
 
 export type Rol = 'socio' | 'comision_directiva' | 'revisor_cuentas' | 'admin'
 export type EstadoSocio = 'activo' | 'inactivo' | 'eliminado'
+export type CategoriaSocio = 'pleno' | 'honorario' | 'adherente'
 export type EstadoCuota = 'pendiente' | 'pagada' | 'parcial' | 'vencida'
 export type TipoMovimiento = 'ingreso' | 'egreso'
 export type TipoResolucion = 'asamblea' | 'decreto'
@@ -34,14 +35,28 @@ export type ReintegroEstado =
 export type RolAile =
   | 'Presidente'
   | 'Vicepresidente'
+  | 'Secretario'
+  | 'Secretaria'
   | 'Secretario General'
+  | 'Secretaria General'
   | 'Director de Finanzas'
+  | 'Directora de Finanzas'
+  | 'Miembro de Finanzas'
   | 'Tesorero'
   | 'Revisor de Cuentas'
   | 'Vocal Titular'
   | 'Vocal Suplente'
   | 'Revisor de Cuentas Titular'
   | 'Revisor de Cuentas Suplente'
+  | 'Director de Recursos Humanos'
+  | 'Directora de Recursos Humanos'
+  | 'Miembro de Recursos Humanos'
+  | 'Director de Comunicacion'
+  | 'Directora de Comunicacion'
+  | 'Miembro de Comunicacion'
+  | 'Director de CEA'
+  | 'Directora de CEA'
+  | 'Miembro de CEA'
   | 'Socio'
 
 export interface Usuario {
@@ -69,6 +84,9 @@ export interface Socio {
   email: string
   telefono?: string
   fecha_ingreso: string
+  fecha_nacimiento?: string | null
+  /** @deprecated La categoría vigente proviene exclusivamente de membresia_formal. */
+  categoria_socio?: CategoriaSocio | null
   estado: EstadoSocio
   avatar_url?: string
   rol_aile?: RolAile | string // Keeping string fallback for legacy data compatibility
@@ -76,6 +94,288 @@ export interface Socio {
   rol_aile_definicion?: RolAileDefinition
   created_at: string
   tiene_deuda?: boolean
+  fecha_notificacion_morosidad?: string | null
+  medio_notificacion_morosidad?: string | null
+  observaciones_estatutarias?: string | null
+  membresia_formal?: {
+    id: string
+    numero_asociado: number
+    categoria: CategoriaSocio
+    origen: 'fundador' | 'admision_cd' | 'designacion_honoraria'
+    estado: 'activo' | 'suspendido' | 'baja'
+    fecha_inicio: string
+  } | null
+}
+
+export type OrigenMembresia = 'fundador' | 'admision_cd' | 'designacion_honoraria'
+export type EstadoMembresia = 'activo' | 'suspendido' | 'baja'
+export type EstadoSolicitudAdmision =
+  | 'recibida'
+  | 'documentacion_incompleta'
+  | 'documentacion_completa'
+  | 'verificada_secretaria'
+  | 'elevada_cd'
+  | 'admitida'
+  | 'rechazada'
+  | 'archivada'
+
+export interface MembresiaAsociado {
+  id: string
+  socio_id: string
+  numero_asociado: number
+  categoria: CategoriaSocio
+  origen: OrigenMembresia
+  estado: EstadoMembresia
+  fecha_inicio: string
+  fecha_fin?: string | null
+  causa_fin?: string | null
+  resolucion_id?: string | null
+  documento_instrumento_id?: string | null
+  instrumento_descripcion: string
+  libro_numero: number
+  folio_alta?: number | null
+  observaciones?: string | null
+  created_by_socio_id?: string | null
+  created_at: string
+  updated_at: string
+  socio?: Socio
+}
+
+export interface SolicitudAdmision {
+  id: string
+  socio_id: string
+  categoria_solicitada: Exclude<CategoriaSocio, 'honorario'>
+  estado: EstadoSolicitudAdmision
+  fecha_solicitud: string
+  fecha_recepcion: string
+  datos_declarados: Record<string, unknown>
+  solicitud_documento_id?: string | null
+  dni_documento_id?: string | null
+  autorizacion_representante_documento_id?: string | null
+  documentacion_general_verificada: boolean
+  verificada_por_socio_id?: string | null
+  verificada_at?: string | null
+  resolucion_id?: string | null
+  resolucion_documento_id?: string | null
+  fecha_resolucion?: string | null
+  categoria_admitida?: Exclude<CategoriaSocio, 'honorario'> | null
+  notificado_at?: string | null
+  notificacion_email?: string | null
+  notificacion_estado?: 'pendiente' | 'enviada' | 'error' | null
+  notificacion_error?: string | null
+  observaciones?: string | null
+  created_by_socio_id: string
+  created_at: string
+  updated_at: string
+  socio?: Socio
+}
+
+export interface HabilitacionNna {
+  id: string
+  socio_id: string
+  requiere_contacto_directo: boolean
+  estado: 'no_requerida' | 'pendiente' | 'vigente' | 'vencida' | 'revocada'
+  antecedentes_documento_id?: string | null
+  antecedentes_emitido_el?: string | null
+  antecedentes_presentado_el?: string | null
+  antecedentes_vence_el?: string | null
+  integridad_sexual_documento_id?: string | null
+  integridad_sexual_emitido_el?: string | null
+  integridad_sexual_presentado_el?: string | null
+  integridad_sexual_vence_el?: string | null
+  verificado_por_socio_id?: string | null
+  verificado_at?: string | null
+  observaciones?: string | null
+  created_at: string
+  updated_at: string
+  socio?: Socio
+}
+
+export interface LibroAsociadosCierre {
+  id: string
+  periodo: string
+  libro_numero: number
+  folio_desde: number
+  folio_hasta: number
+  asiento_desde?: number | null
+  asiento_hasta?: number | null
+  estado: 'cerrado' | 'presentado_ipj'
+  documento_id: string
+  sha256: string
+  sha256_anterior?: string | null
+  cerrado_por_socio_id: string
+  cerrado_at: string
+  presentado_ipj_at?: string | null
+  constancia_ipj_documento_id?: string | null
+  documento?: DocumentoLegal
+}
+
+export type TipoAsambleaEstatutaria = 'ordinaria' | 'extraordinaria'
+export type EstadoAsambleaEstatutaria = 'borrador' | 'convocada' | 'en_curso' | 'cerrada' | 'cancelada'
+export type ModalidadAsambleaEstatutaria = 'presencial' | 'virtual' | 'mixta'
+export type EstadoListaElectoral = 'borrador' | 'presentada' | 'observada' | 'aprobada' | 'proclamada' | 'retirada'
+export type CargoListaElectoral =
+  | 'Presidente'
+  | 'Secretario'
+  | 'Tesorero'
+  | 'Vocal Titular'
+  | 'Vocal Suplente'
+  | 'Revisor de Cuentas Titular'
+  | 'Revisor de Cuentas Suplente'
+export type TipoProcesoDisciplinario = 'apercibimiento' | 'suspension' | 'cesantia' | 'expulsion'
+export type EstadoProcesoDisciplinario =
+  | 'borrador'
+  | 'notificado'
+  | 'descargo_recibido'
+  | 'pendiente_resolucion'
+  | 'resuelto'
+  | 'apelado'
+  | 'cerrado'
+  | 'anulado'
+export type OrganoAutoridadEstatutaria = 'comision_directiva' | 'comision_revisora'
+export type EstadoRemocionAutoridad =
+  | 'borrador'
+  | 'notificado'
+  | 'descargo_recibido'
+  | 'pendiente_resolucion'
+  | 'resuelta'
+  | 'apelada'
+  | 'cerrada'
+  | 'anulada'
+export type EstadoProtocoloMenor = 'pendiente' | 'vigente' | 'vencido' | 'revocado'
+
+export interface SocioEstatutario extends Socio {
+  cuotas_impagas_count: number
+  esta_al_dia: boolean
+  requiere_notificacion_morosidad: boolean
+  edad: number | null
+  meses_antiguedad: number
+  puede_votar: boolean
+  puede_integrar_organos: boolean
+}
+
+export interface AsambleaEstatutaria {
+  id: string
+  tipo: TipoAsambleaEstatutaria
+  estado: EstadoAsambleaEstatutaria
+  titulo: string
+  fecha?: string | null
+  lugar?: string | null
+  modalidad: ModalidadAsambleaEstatutaria
+  convocatoria_fecha?: string | null
+  publicacion_boletin_fecha?: string | null
+  notificacion_socios_fecha?: string | null
+  documentacion_disponible_fecha?: string | null
+  cierre_ejercicio?: string | null
+  orden_dia?: string | null
+  notas?: string | null
+  created_by_socio_id?: string | null
+  updated_by_socio_id?: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface PadronAsambleaEstatutaria {
+  id: string
+  asamblea_id: string
+  socio_id: string
+  socio_nombre: string
+  socio_apellido: string
+  dni?: string | null
+  email?: string | null
+  categoria_socio: CategoriaSocio
+  edad?: number | null
+  meses_antiguedad: number
+  cuotas_impagas_count: number
+  esta_al_dia: boolean
+  puede_votar: boolean
+  puede_integrar_organos: boolean
+  motivo_no_vota?: string | null
+  snapshot_at: string
+}
+
+export interface ListaElectoralEstatutaria {
+  id: string
+  asamblea_id: string
+  nombre: string
+  estado: EstadoListaElectoral
+  presentada_at?: string | null
+  observaciones?: string | null
+  created_by_socio_id?: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface CandidatoListaElectoral {
+  id: string
+  lista_id: string
+  cargo: CargoListaElectoral
+  socio_id: string
+  orden: number
+  cumple_requisitos: boolean
+  motivo_observacion?: string | null
+  created_at: string
+}
+
+export interface ProcesoDisciplinarioEstatutario {
+  id: string
+  socio_id: string
+  tipo: TipoProcesoDisciplinario
+  estado: EstadoProcesoDisciplinario
+  causa: string
+  fecha_hecho?: string | null
+  fecha_inicio: string
+  fecha_notificacion?: string | null
+  medio_notificacion?: string | null
+  plazo_descargo_hasta?: string | null
+  resolucion_id?: string | null
+  resultado?: string | null
+  created_by_socio_id?: string | null
+  updated_by_socio_id?: string | null
+  created_at: string
+  updated_at: string
+  socio?: Pick<Socio, 'id' | 'nombre' | 'apellido' | 'dni' | 'email'>
+}
+
+export interface RemocionAutoridadEstatutaria {
+  id: string
+  socio_id: string
+  organo: OrganoAutoridadEstatutaria
+  cargo: string
+  estado: EstadoRemocionAutoridad
+  causa: string
+  fecha_inicio: string
+  fecha_notificacion?: string | null
+  medio_notificacion?: string | null
+  plazo_descargo_hasta?: string | null
+  resolucion_id?: string | null
+  resultado?: string | null
+  created_by_socio_id?: string | null
+  updated_by_socio_id?: string | null
+  created_at: string
+  updated_at: string
+  socio?: Pick<Socio, 'id' | 'nombre' | 'apellido' | 'dni' | 'email'>
+}
+
+export interface ProtocoloMenorEstatutario {
+  id: string
+  socio_id: string
+  responsable_nombre?: string | null
+  responsable_dni?: string | null
+  responsable_email?: string | null
+  responsable_telefono?: string | null
+  autorizacion_archivo_url?: string | null
+  certificado_archivo_url?: string | null
+  protocolo_aceptado: boolean
+  fecha_autorizacion?: string | null
+  vencimiento_autorizacion?: string | null
+  estado: EstadoProtocoloMenor
+  observaciones?: string | null
+  created_by_socio_id?: string | null
+  updated_by_socio_id?: string | null
+  created_at: string
+  updated_at: string
+  socio?: Pick<Socio, 'id' | 'nombre' | 'apellido' | 'dni' | 'email' | 'fecha_nacimiento'>
 }
 
 export type CalendarioAlcanceReunion = 'personalizada' | 'comision_directiva' | 'general'
@@ -255,6 +555,7 @@ export interface Cuota {
   monto_pagado: number
   fecha_pago?: string
   estado: EstadoCuota
+  naturaleza?: 'aporte_historico' | 'cuota_social'
   comprobante_url?: string
   registrado_por?: string
   created_at: string
@@ -410,6 +711,64 @@ export interface ArticuloEstatuto {
   editado_por?: string
   // Relaciones
   editadoPor?: Usuario
+}
+
+export type TipoDocumentoLegal =
+  | 'acta_constitutiva_estatuto'
+  | 'acta_cd'
+  | 'acta_asamblea'
+  | 'resolucion_cd'
+  | 'constancia_ipj'
+  | 'libro_digital'
+  | 'otro'
+
+export type EstadoRegistroDocumento =
+  | 'borrador'
+  | 'pendiente_firma'
+  | 'firmado'
+  | 'presentado_ipj'
+  | 'inscripto_ipj'
+  | 'rechazado'
+  | 'reemplazado'
+
+export interface ComponenteDocumentoLegal {
+  tipo: 'acta_constitutiva' | 'estatuto' | 'acta_cd' | 'acta_asamblea' | 'resolucion_cd' | 'otro'
+  numero?: number
+  anio?: number
+  titulo?: string
+}
+
+export interface DocumentoLegal {
+  id: string
+  tipo: TipoDocumentoLegal
+  titulo: string
+  descripcion?: string | null
+  numero?: number | null
+  anio?: number | null
+  fecha_documento?: string | null
+  estado_registro: EstadoRegistroDocumento
+  es_vigente: boolean
+  firma_digital: boolean
+  organismo_registro?: string | null
+  expediente?: string | null
+  registrado_at?: string | null
+  componentes: ComponenteDocumentoLegal[]
+  etiquetas: string[]
+  bucket: 'documentos-legales'
+  storage_path: string
+  nombre_archivo: string
+  mime_type: 'application/pdf'
+  tamano_bytes: number
+  sha256: string
+  documento_padre_id?: string | null
+  visibilidad?: 'privado' | 'publico'
+  nivel_acceso?: 'institucional' | 'secretaria' | 'proteccion_nna'
+  publicado_at?: string | null
+  titulo_publico?: string | null
+  descripcion_publica?: string | null
+  created_by_socio_id: string
+  created_at: string
+  updated_at: string
 }
 
 export interface Balance {

@@ -21,6 +21,7 @@ interface SociosFilters {
 
 interface SocioWithRoleDefinition extends Socio {
   rol_aile_definition?: { nombre?: string | null } | null
+  membresias?: Array<NonNullable<Socio['membresia_formal']>> | null
 }
 
 export function useSocios(enabled: boolean = true) {
@@ -61,7 +62,8 @@ export function useSocios(enabled: boolean = true) {
         .from('socios')
         .select(`
         *,
-        rol_aile_definition:rol_aile_definitions(nombre)
+        rol_aile_definition:rol_aile_definitions(nombre),
+        membresias:asociados_membresias!asociados_membresias_socio_id_fkey(id, numero_asociado, categoria, origen, estado, fecha_inicio)
       `)
         .order('apellido', { ascending: true }), {
           label: 'socios',
@@ -74,11 +76,21 @@ export function useSocios(enabled: boolean = true) {
       const normalizedSocios = ((data || []) as SocioWithRoleDefinition[]).map((s) => ({
         ...s,
         rol_aile: s.rol_aile_definition?.nombre || s.rol_aile,
+        // Sólo una membresía formal activa acredita la condición de asociado actual.
+        membresia_formal: s.membresias?.find((membership) => membership.estado === 'activo') || null,
       }))
 
       setSocios(normalizedSocios)
     } catch (error) {
-      console.error('Error fetching socios:', error)
+      const details = error && typeof error === 'object'
+        ? {
+            code: 'code' in error ? String(error.code) : undefined,
+            message: 'message' in error ? String(error.message) : undefined,
+            details: 'details' in error ? error.details : undefined,
+            hint: 'hint' in error ? error.hint : undefined,
+          }
+        : { message: String(error) }
+      console.error('Error fetching socios:', details)
       if (showBlockingLoader) {
         toast.error('Error al cargar socios')
       }
@@ -153,11 +165,11 @@ export function useSocios(enabled: boolean = true) {
       .single()
 
     if (error) {
-      toast.error('Error al crear socio')
+      toast.error('Error al crear la persona')
       throw error
     }
 
-    toast.success('Socio creado correctamente')
+    toast.success('Persona creada correctamente')
     await fetchSocios()
     return newSocio as Socio
   }, [fetchSocios])
@@ -169,7 +181,7 @@ export function useSocios(enabled: boolean = true) {
       .eq('id', id)
 
     if (error) {
-      toast.error('Error al actualizar socio')
+      toast.error('Error al actualizar la persona')
       throw error
     }
 
@@ -189,11 +201,11 @@ export function useSocios(enabled: boolean = true) {
       .eq('id', id)
 
     if (error) {
-      toast.error('Error al cambiar estado del socio')
+      toast.error('Error al cambiar el estado del vínculo')
       throw error
     }
 
-    toast.success(`Socio ${nuevoEstado === 'activo' ? 'activado' : 'desactivado'}`)
+    toast.success(`Vínculo ${nuevoEstado === 'activo' ? 'activado' : 'desactivado'}`)
     await fetchSocios()
   }, [socios, fetchSocios])
 
@@ -206,7 +218,7 @@ export function useSocios(enabled: boolean = true) {
 
     if (feeError) {
       console.error('Error al eliminar registros de cuotas:', feeError.message)
-      toast.error(`Error al eliminar socio: ${feeError.message}`)
+      toast.error(`Error al eliminar la persona: ${feeError.message}`)
       throw feeError
     }
 
@@ -217,11 +229,11 @@ export function useSocios(enabled: boolean = true) {
 
     if (error) {
       console.error('Error al eliminar socio:', error.message, error.details, error.code)
-      toast.error(`Error al eliminar socio: ${error.message}`)
+      toast.error(`Error al eliminar la persona: ${error.message}`)
       throw error
     }
 
-    toast.success('Socio eliminado correctamente')
+    toast.success('Persona eliminada correctamente')
     await fetchSocios()
   }, [fetchSocios])
 

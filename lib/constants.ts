@@ -107,29 +107,50 @@ export const ROL_COLORS: Record<Rol, { bg: string; text: string }> = {
 export const ROLES_AILE = [
   'Presidente',
   'Vicepresidente',
+  'Secretario',
+  'Secretaria',
   'Secretario General',
+  'Secretaria General',
   'Director de Finanzas',
+  'Directora de Finanzas',
+  'Miembro de Finanzas',
   'Tesorero',
   'Revisor de Cuentas',
   'Vocal Titular',
   'Vocal Suplente',
   'Revisor de Cuentas Titular',
   'Revisor de Cuentas Suplente',
+  'Director de Recursos Humanos',
+  'Directora de Recursos Humanos',
+  'Miembro de Recursos Humanos',
+  'Director de Comunicacion',
+  'Directora de Comunicacion',
+  'Miembro de Comunicacion',
+  'Director de CEA',
+  'Directora de CEA',
+  'Miembro de CEA',
   'Socio',
 ] as const
 
 export const REINTEGROS_ALLOWED_ROLES_AILE = [
   'Director de Finanzas',
+  'Directora de Finanzas',
   'Miembro de Finanzas',
   'Tesorero',
   'Presidente',
+  'Secretario',
+  'Secretaria',
   'Secretario General',
+  'Secretaria General',
 ] as const
 
 export const COMISION_DIRECTIVA_ROLES_AILE = [
   'Presidente',
   'Tesorero',
+  'Secretario',
+  'Secretaria',
   'Secretario General',
+  'Secretaria General',
   'Vocal Titular',
 ] as const
 
@@ -170,6 +191,7 @@ const INSTITUTIONAL_GLOBAL_MANAGER_ROLES = new Set(
 const FINANZAS_DEBT_MANAGER_ROLE_ALIASES = [
   'director de finanzas',
   'directora de finanzas',
+  'tesorero',
 ]
 
 const FINANZAS_OPERATION_ROLE_ALIASES = [
@@ -185,6 +207,22 @@ const RRHH_ROLE_ALIASES = [
   'directora de recursos humanos',
   'miembro de rrhh',
   'miembro de recursos humanos',
+]
+
+const SECRETARIA_ROLE_ALIASES = [
+  'secretario',
+  'secretaria',
+  'secretario general',
+  'secretaria general',
+]
+
+const REVISORA_ROLE_ALIASES = [
+  'revisor de cuentas',
+  'revisora de cuentas',
+  'revisor de cuentas titular',
+  'revisora de cuentas titular',
+  'revisor de cuentas suplente',
+  'revisora de cuentas suplente',
 ]
 
 type PermissionOverrides = Partial<Record<Recurso, Accion[]>>
@@ -213,6 +251,36 @@ for (const roleName of FINANZAS_DEBT_MANAGER_ROLE_ALIASES) {
   INSTITUTIONAL_ROLE_OVERRIDES[roleName] = {
     ...INSTITUTIONAL_ROLE_OVERRIDES[roleName],
     deudas: ['ver', 'editar'],
+  }
+}
+
+for (const roleName of SECRETARIA_ROLE_ALIASES) {
+  INSTITUTIONAL_ROLE_OVERRIDES[roleName] = {
+    ...INSTITUTIONAL_ROLE_OVERRIDES[roleName],
+    calendario: ['ver', 'crear', 'editar'],
+    socios: ['ver', 'editar'],
+    documentos: ['ver', 'crear', 'editar'],
+    estatuto: ['ver'],
+    resoluciones: ['ver', 'crear', 'editar'],
+    balances: ['ver'],
+    reuniones: ['ver', 'crear', 'editar'],
+    comunicaciones: ['ver', 'crear', 'editar'],
+  }
+}
+
+for (const roleName of REVISORA_ROLE_ALIASES) {
+  INSTITUTIONAL_ROLE_OVERRIDES[roleName] = {
+    socios: ['ver'],
+    deudas: ['ver'],
+    movimientos: ['ver'],
+    finanzas: ['ver'],
+    tesoreria: ['ver'],
+    documentos: ['ver'],
+    estatuto: ['ver'],
+    resoluciones: ['ver'],
+    balances: ['ver'],
+    logs: ['ver'],
+    reuniones: ['ver'],
   }
 }
 
@@ -336,10 +404,10 @@ export const PERMISSIONS: Record<Recurso, Record<Accion, Rol[]>> = {
     aprobar: [],
   },
   estatuto: {
-    ver: ['socio', 'comision_directiva', 'revisor_cuentas', 'admin'],
-    crear: [],
-    editar: ['admin'],
-    eliminar: [],
+    ver: ['comision_directiva', 'revisor_cuentas', 'admin'],
+    crear: ['comision_directiva', 'admin'],
+    editar: ['comision_directiva', 'admin'],
+    eliminar: ['admin'],
     aprobar: [],
   },
   resoluciones: {

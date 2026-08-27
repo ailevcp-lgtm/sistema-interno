@@ -90,6 +90,11 @@ export function LegalDocumentUploadDialog({
   const [agency, setAgency] = useState("Instituto Provincial de Personas Jurídicas (IPJ)")
   const [caseNumber, setCaseNumber] = useState("")
   const [digitallySigned, setDigitallySigned] = useState(true)
+  const [publishPublicly, setPublishPublicly] = useState(false)
+  const [publicTitle, setPublicTitle] = useState("")
+  const [publicDescription, setPublicDescription] = useState("")
+  const [publicCopyReviewed, setPublicCopyReviewed] = useState(false)
+  const [accessLevel, setAccessLevel] = useState<"institucional" | "secretaria" | "proteccion_nna">("institucional")
   const [saving, setSaving] = useState(false)
 
   const canSave = useMemo(() => Boolean(file && title.trim().length >= 3 && !saving), [file, saving, title])
@@ -106,6 +111,11 @@ export function LegalDocumentUploadDialog({
     setAgency("Instituto Provincial de Personas Jurídicas (IPJ)")
     setCaseNumber("")
     setDigitallySigned(true)
+    setPublishPublicly(false)
+    setPublicTitle("")
+    setPublicDescription("")
+    setPublicCopyReviewed(false)
+    setAccessLevel("institucional")
   }
 
   const close = (nextOpen: boolean) => {
@@ -120,6 +130,12 @@ export function LegalDocumentUploadDialog({
     try {
       setSaving(true)
       await assertPdf(file)
+      if (publishPublicly && accessLevel !== "institucional") {
+        throw new Error("La documentación restringida no puede publicarse.")
+      }
+      if (publishPublicly && !publicCopyReviewed) {
+        throw new Error("Debes confirmar que revisaste la copia pública y sus datos personales.")
+      }
       const hash = await sha256Hex(file)
 
       const { data: existing, error: duplicateError } = await supabase
@@ -148,7 +164,8 @@ export function LegalDocumentUploadDialog({
       }
 
       const pathYear = documentDate?.slice(0, 4) || year || String(new Date().getFullYear())
-      uploadedPath = `${type}/${pathYear}/${hash.slice(0, 16)}-${sanitizeFilePart(file.name)}`
+      const pathPrefix = accessLevel === "institucional" ? type : `restringido/${accessLevel}/${type}`
+      uploadedPath = `${pathPrefix}/${pathYear}/${hash.slice(0, 16)}-${sanitizeFilePart(file.name)}`
 
       const { error: uploadError } = await supabase.storage
         .from("documentos-legales")
@@ -183,6 +200,11 @@ export function LegalDocumentUploadDialog({
         tamano_bytes: file.size,
         sha256: hash,
         created_by_socio_id: socio.id,
+        nivel_acceso: accessLevel,
+        visibilidad: publishPublicly ? "publico" : "privado",
+        publicado_at: publishPublicly ? new Date().toISOString() : null,
+        titulo_publico: publishPublicly ? (publicTitle.trim() || title.trim()) : null,
+        descripcion_publica: publishPublicly ? (publicDescription.trim() || null) : null,
       })
 
       if (insertError) throw insertError
@@ -229,8 +251,38 @@ export function LegalDocumentUploadDialog({
           </div>
 
           <div className="space-y-2 sm:col-span-2">
+            <Label htmlFor="legal-access">Nivel de acceso</Label>
+            <select id="legal-access" value={accessLevel} onChange={(event) => {
+              const next = event.target.value as "institucional" | "secretaria" | "proteccion_nna"
+              setAccessLevel(next)
+              if (next !== "institucional") setPublishPublicly(false)
+            }} className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
+              <option value="institucional">Institucional - perfiles con acceso a Documentos</option>
+              <option value="secretaria">Restringido a Secretaría - admisiones y DNI</option>
+              <option value="proteccion_nna">Restringido - certificados para funciones con NNA</option>
+            </select>
+          </div>
+
+          <div className="space-y-2 sm:col-span-2">
             <Label htmlFor="legal-title">Título</Label>
             <Input id="legal-title" value={title} onChange={(event) => setTitle(event.target.value)} />
+          </div>
+
+          <div className="space-y-3 rounded-lg border p-4 sm:col-span-2">
+            <label className="flex items-start gap-3 text-sm">
+              <input type="checkbox" className="mt-1" checked={publishPublicly} disabled={accessLevel !== "institucional"} onChange={(event) => setPublishPublicly(event.target.checked)} />
+              <span><strong>Publicar en el archivo institucional</strong><span className="mt-1 block text-xs text-muted-foreground">El PDF podrá descargarse sin iniciar sesión desde /p/documentos.</span></span>
+            </label>
+            {publishPublicly && (
+              <div className="grid gap-3">
+                <div className="space-y-2"><Label htmlFor="public-title">Título público</Label><Input id="public-title" value={publicTitle} onChange={(event) => setPublicTitle(event.target.value)} placeholder={title || "Título visible"} /></div>
+                <div className="space-y-2"><Label htmlFor="public-description">Descripción pública</Label><Textarea id="public-description" value={publicDescription} onChange={(event) => setPublicDescription(event.target.value)} /></div>
+                <label className="flex items-start gap-3 rounded-md bg-amber-50 p-3 text-xs text-amber-950">
+                  <input type="checkbox" className="mt-0.5" checked={publicCopyReviewed} onChange={(event) => setPublicCopyReviewed(event.target.checked)} />
+                  Confirmo que revisé el PDF y que no expone domicilios, certificados, copias de DNI, firmas ni otros datos personales que no deban publicarse.
+                </label>
+              </div>
+            )}
           </div>
 
           <div className="space-y-2">

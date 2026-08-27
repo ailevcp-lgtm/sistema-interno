@@ -11,6 +11,7 @@ import {
   Mail,
   ReceiptText,
   Settings,
+  Scale,
   Users,
   Users2,
   type LucideIcon,
@@ -42,6 +43,7 @@ export const APP_NAV_ITEMS: AppNavItem[] = [
   { id: 'comunicaciones', label: 'Comunicaciones', mobileLabel: 'Comms', iconName: 'Mail', icon: Mail, recurso: 'comunicaciones' },
   { id: 'propuestas', label: 'Propuestas', iconName: 'Briefcase', icon: Briefcase, recurso: 'propuestas' },
   { id: 'documentos', label: 'Documentos', mobileLabel: 'Docs', iconName: 'FileText', icon: FileText, recurso: 'documentos' },
+  { id: 'estatuto', label: 'Estatuto', iconName: 'Scale', icon: Scale, recurso: 'estatuto' },
   { id: 'configuracion', label: 'Ajustes', iconName: 'Settings', icon: Settings, recurso: 'configuracion' },
 ]
 

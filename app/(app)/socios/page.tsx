@@ -6,7 +6,8 @@ import { useAuth, useRequirePermission } from '@/hooks/useAuth'
 import { useSocios } from '@/hooks/useSocios'
 import { useRoles } from '@/hooks/useRoles'
 import { formatDate, getInitials, generateAvatarColor } from '@/lib/utils'
-import { ESTADO_SOCIO_COLORS, ROLES_AILE } from '@/lib/constants'
+import { ESTADO_SOCIO_COLORS } from '@/lib/constants'
+import { getSocioStatutoryStatus } from '@/lib/statutory'
 import type { Socio, EstadoSocio } from '@/lib/types'
 
 import { Button } from '@/components/ui/button'
@@ -29,7 +30,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Search, Plus, MoreVertical, UserCheck, UserX, Eye, ChevronLeft, ChevronRight, Users, Loader2 } from 'lucide-react'
+import { Search, Plus, MoreVertical, UserCheck, UserX, Eye, ChevronLeft, ChevronRight, Users, Loader2, BookOpen } from 'lucide-react'
 
 export default function SociosPage() {
   const { user, hasPermission } = useAuth()
@@ -127,6 +128,7 @@ export default function SociosPage() {
         fecha_ingreso: data.fecha_ingreso,
         estado: data.estado || 'activo',
         avatar_url: data.avatar_url,
+        fecha_nacimiento: data.fecha_nacimiento || null,
         rol_aile: data.rol_aile,
         rol_aile_id: data.rol_aile_id,
       })
@@ -137,7 +139,7 @@ export default function SociosPage() {
   }
 
   const handleDelete = async (id: string) => {
-    if (confirm('¿Estás seguro de que deseas eliminar este socio? Esta acción lo ocultará de la lista principal pero los datos históricos se mantendrán.')) {
+    if (confirm('¿Estás seguro de que deseas eliminar esta persona de la comunidad? Los datos históricos se mantendrán.')) {
       try {
         await deleteSocio(id)
       } catch {
@@ -170,46 +172,54 @@ export default function SociosPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-foreground">Socios</h1>
+          <h1 className="text-2xl font-semibold text-foreground">Comunidad AILE</h1>
           <p className="text-muted-foreground mt-1">
-            {totalSocios} socios registrados
+            {totalSocios} personas vinculadas históricamente
           </p>
         </div>
-        {canCreate && (
-          <Button
-            onClick={() => setShowNewModal(true)}
-            className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-primary-foreground border-0"
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            Nuevo socio
-          </Button>
-        )}
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Link href="/socios/registro">
+            <Button variant="outline" className="w-full sm:w-auto">
+              <BookOpen className="w-4 h-4 mr-2" />
+              Registro formal
+            </Button>
+          </Link>
+          {canCreate && (
+            <Button
+              onClick={() => setShowNewModal(true)}
+              className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-primary-foreground border-0"
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              Nueva persona
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Stats Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard
           icon={Users}
-          label="Total socios"
+          label="Comunidad histórica"
           value={allSocios.length}
         />
         <StatCard
           icon={UserCheck}
-          label="Activos"
+          label="Vínculos operativos"
           value={allSocios.filter(s => s.estado === 'activo').length}
           color="text-green-500"
         />
         <StatCard
-          icon={UserX}
-          label="Inactivos"
-          value={allSocios.filter(s => s.estado === 'inactivo').length}
-          color="text-gray-400"
+          icon={UserCheck}
+          label="Padrón oficial"
+          value={allSocios.filter(s => s.membresia_formal?.estado === 'activo').length}
+          color="text-cyan-500"
         />
         <StatCard
           icon={Users}
-          label="Con deuda"
-          value={allSocios.filter(s => s.tiene_deuda).length}
-          color="text-red-500"
+          label="No asociados"
+          value={allSocios.filter(s => !s.membresia_formal).length}
+          color="text-slate-500"
         />
       </div>
 
@@ -244,13 +254,14 @@ export default function SociosPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="todos">Todos los roles</SelectItem>
-                  {ROLES_AILE.map((rol) => (
-                    <SelectItem key={rol} value={rol}>
-                      {rol}
+                  {roles.map((rol) => (
+                    <SelectItem key={rol.id} value={rol.nombre}>
+                      {rol.nombre}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+
             </div>
           </div>
         </CardContent>
@@ -266,7 +277,7 @@ export default function SociosPage() {
           <Card className="bg-card border-border">
             <CardContent className="p-12 text-center">
               <Users className="w-12 h-12 text-primary mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-foreground mb-2">No se encontraron socios</h3>
+              <h3 className="text-lg font-medium text-foreground mb-2">No se encontraron personas</h3>
               <p className="text-muted-foreground">
                 Intenta ajustar los filtros de búsqueda
               </p>
@@ -361,6 +372,7 @@ function SocioRow({
     ? 'bg-muted/35 border-border hover:border-primary/20'
     : 'bg-card border-border hover:border-primary/30'
   const selectedRoleId = socio.rol_aile_id || roles.find((role) => role.nombre === socio.rol_aile)?.id || ''
+  const statutoryStatus = getSocioStatutoryStatus(socio)
 
   return (
     <Card className={`${cardClassName} transition-colors group`}>
@@ -421,6 +433,22 @@ function SocioRow({
                 <span className="break-all sm:break-normal">{socio.email}</span>
                 <span className="hidden sm:inline text-muted-foreground/60">•</span>
                 <span className="whitespace-nowrap">Desde {formatDate(socio.fecha_ingreso)}</span>
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                {statutoryStatus.isFormalMember ? (
+                  <Badge variant="outline" className="border-cyan-500/30 bg-cyan-500/10 text-cyan-600">
+                    {statutoryStatus.categoriaLabel} · N.º {socio.membresia_formal?.numero_asociado}
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="border-slate-400/30 bg-slate-100 text-slate-600">
+                    No integra el padrón legal
+                  </Badge>
+                )}
+                {statutoryStatus.canVote && (
+                  <Badge variant="outline" className="border-green-500/30 bg-green-500/10 text-green-600">
+                    Derecho a voto
+                  </Badge>
+                )}
               </div>
             </div>
           </div>

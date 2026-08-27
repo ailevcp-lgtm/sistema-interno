@@ -5,8 +5,9 @@ import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { useSocios, useCuotas } from '@/hooks/useSocios'
-import { formatARS, formatDate, getInitials, generateAvatarColor, calcularAntiguedad } from '@/lib/utils'
+import { formatARS, formatDate, getInitials, generateAvatarColor } from '@/lib/utils'
 import { ESTADO_CUOTA_COLORS, ESTADO_SOCIO_COLORS } from '@/lib/constants'
+import { getSocioStatutoryStatus } from '@/lib/statutory'
 import type { Cuota } from '@/lib/types'
 
 import { Button } from '@/components/ui/button'
@@ -79,6 +80,7 @@ export default function SocioDetailPage() {
   const totalDeuda = allCuotas
     .filter(c => c.estado === 'vencida' || c.estado === 'pendiente' || c.estado === 'parcial')
     .reduce((sum, c) => sum + (c.monto_esperado - c.monto_pagado), 0)
+  const statutoryStatus = getSocioStatutoryStatus(socio, allCuotas)
 
   return (
     <div className="space-y-6">
@@ -137,6 +139,20 @@ export default function SocioDetailPage() {
                         Con deuda
                       </Badge>
                     )}
+                    {statutoryStatus.isFormalMember ? (
+                      <Badge variant="outline" className="border-cyan-500/30 text-cyan-600 bg-cyan-500/10 px-2.5 py-0.5">
+                        {statutoryStatus.categoriaLabel} · Asociado N.º {socio.membresia_formal?.numero_asociado}
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="border-slate-400/30 bg-slate-100 text-slate-600 px-2.5 py-0.5">
+                        No integra el padrón legal
+                      </Badge>
+                    )}
+                    {statutoryStatus.canVote && (
+                      <Badge variant="outline" className="border-green-500/30 text-green-600 bg-green-500/10 px-2.5 py-0.5">
+                        Derecho a voto
+                      </Badge>
+                    )}
                   </div>
                 </div>
 
@@ -170,12 +186,74 @@ export default function SocioDetailPage() {
               )}
               <div className="flex items-center gap-3 text-muted-foreground">
                 <Calendar className="w-4 h-4 text-primary" />
-                <span>Ingresó el {formatDate(socio.fecha_ingreso)}</span>
+                <span>Vinculación histórica: {formatDate(socio.fecha_ingreso)}</span>
               </div>
+              {socio.membresia_formal && (
+                <div className="flex items-center gap-3 text-muted-foreground">
+                  <Calendar className="w-4 h-4 text-primary" />
+                  <span>Asociado formal desde {formatDate(socio.membresia_formal.fecha_inicio)}</span>
+                </div>
+              )}
+              {socio.fecha_nacimiento && (
+                <div className="flex items-center gap-3 text-muted-foreground">
+                  <Calendar className="w-4 h-4 text-primary" />
+                  <span>Nació el {formatDate(socio.fecha_nacimiento)}</span>
+                </div>
+              )}
               <div className="flex items-center gap-3 text-muted-foreground">
                 <Clock className="w-4 h-4 text-primary" />
-                <span>{calcularAntiguedad(socio.fecha_ingreso)} de antigüedad</span>
+                <span>{socio.membresia_formal ? `${statutoryStatus.membershipMonths} meses de antigüedad estatutaria` : 'Sin antigüedad estatutaria'}</span>
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Statutory Status */}
+          <Card className="bg-card border-border">
+            <CardHeader>
+              <CardTitle className="text-foreground text-base">Condición estatutaria</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between gap-3 text-sm">
+                <span className="text-muted-foreground">Categoría</span>
+                <span className="font-medium text-foreground">{statutoryStatus.isFormalMember ? statutoryStatus.categoriaLabel : 'No integra el padrón'}</span>
+              </div>
+              <div className="flex items-center justify-between gap-3 text-sm">
+                <span className="text-muted-foreground">Edad</span>
+                <span className="font-medium text-foreground">
+                  {statutoryStatus.age === null ? 'Sin fecha cargada' : `${statutoryStatus.age} años`}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-3 text-sm">
+                <span className="text-muted-foreground">Antigüedad</span>
+                <span className="font-medium text-foreground">{statutoryStatus.membershipMonths} meses</span>
+              </div>
+              <div className="flex items-center justify-between gap-3 text-sm">
+                <span className="text-muted-foreground">Cuotas impagas</span>
+                <span className={`font-medium ${statutoryStatus.unpaidFeesCount > 0 ? 'text-red-500' : 'text-green-500'}`}>
+                  {statutoryStatus.unpaidFeesCount}
+                </span>
+              </div>
+              <Separator className="bg-border" />
+              <div className="grid grid-cols-2 gap-3">
+                <Badge variant="outline" className={statutoryStatus.canVote ? 'justify-center border-green-500/30 bg-green-500/10 text-green-600' : 'justify-center border-muted text-muted-foreground'}>
+                  {statutoryStatus.canVote ? 'Puede votar' : 'Sin voto hoy'}
+                </Badge>
+                <Badge variant="outline" className={statutoryStatus.canHoldOffice ? 'justify-center border-green-500/30 bg-green-500/10 text-green-600' : 'justify-center border-muted text-muted-foreground'}>
+                  {statutoryStatus.canHoldOffice ? 'Puede ser autoridad' : 'No elegible hoy'}
+                </Badge>
+              </div>
+              {statutoryStatus.requiresDebtNotice && (
+                <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-600">
+                  Adeuda 3 o mas cuotas: corresponde registrar notificacion fehaciente antes de evaluar cesantia.
+                </div>
+              )}
+              {statutoryStatus.reasons.length > 0 && (
+                <div className="space-y-2 text-xs text-muted-foreground">
+                  {statutoryStatus.reasons.map((reason) => (
+                    <p key={reason}>- {reason}</p>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
 

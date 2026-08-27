@@ -46,6 +46,11 @@ export interface DocumentoLegal {
   tamano_bytes: number
   sha256: string
   documento_padre_id?: string | null
+  visibilidad?: 'privado' | 'publico'
+  nivel_acceso?: 'institucional' | 'secretaria' | 'proteccion_nna'
+  publicado_at?: string | null
+  titulo_publico?: string | null
+  descripcion_publica?: string | null
   created_by_socio_id: string
   created_at: string
   updated_at: string

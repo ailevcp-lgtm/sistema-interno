@@ -449,6 +449,7 @@ function RolesTab() {
 function CuotasTab() {
   const [montoCuota, setMontoCuota] = useState(5000)
   const [diaVencimiento, setDiaVencimiento] = useState(10)
+  const [fechaInicioPercepcion, setFechaInicioPercepcion] = useState('')
   const [loadingConfig, setLoadingConfig] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [isGeneratingCuotas, setIsGeneratingCuotas] = useState(false)
@@ -459,7 +460,7 @@ function CuotasTab() {
       const { data } = await runWithRecovery(() => supabase
         .from('configuracion')
         .select('clave, valor')
-        .in('clave', ['monto_cuota', 'dia_vencimiento']), {
+        .in('clave', ['monto_cuota', 'dia_vencimiento', 'fecha_inicio_percepcion_cuotas']), {
           label: 'configuracion cuotas',
         })
 
@@ -467,6 +468,7 @@ function CuotasTab() {
         data.forEach(row => {
           if (row.clave === 'monto_cuota') setMontoCuota(Number(row.valor))
           if (row.clave === 'dia_vencimiento') setDiaVencimiento(Number(row.valor))
+          if (row.clave === 'fecha_inicio_percepcion_cuotas') setFechaInicioPercepcion(row.valor || '')
         })
       }
     } finally {
@@ -487,6 +489,7 @@ function CuotasTab() {
         .upsert([
           { clave: 'monto_cuota', valor: String(montoCuota), updated_at: new Date().toISOString() },
           { clave: 'dia_vencimiento', valor: String(diaVencimiento), updated_at: new Date().toISOString() },
+          { clave: 'fecha_inicio_percepcion_cuotas', valor: fechaInicioPercepcion, updated_at: new Date().toISOString() },
         ], { onConflict: 'clave' })
 
       if (error) throw error
@@ -503,17 +506,28 @@ function CuotasTab() {
     try {
       const periodo = getCurrentPeriodo()
 
-      const { data: socios, error: sociosError } = await supabase
-        .from('socios')
-        .select('id')
-        .eq('estado', 'activo')
-
-      if (sociosError || !socios?.length) {
-        toast.error('No se encontraron socios activos')
+      if (!fechaInicioPercepcion) {
+        toast.error('Primero debe fijarse la fecha formal de inicio de percepción de cuotas')
         return
       }
 
-      const socioIds = socios.map((s) => s.id)
+      if (periodo < fechaInicioPercepcion.slice(0, 7)) {
+        toast.error('La percepción formal de cuotas todavía no comenzó')
+        return
+      }
+
+      const { data: membresias, error: sociosError } = await supabase
+        .from('asociados_membresias')
+        .select('socio_id, categoria')
+        .eq('estado', 'activo')
+        .in('categoria', ['pleno', 'adherente'])
+
+      if (sociosError || !membresias?.length) {
+        toast.error('No se encontraron personas asociadas obligadas al pago')
+        return
+      }
+
+      const socioIds = membresias.map((m) => m.socio_id)
 
       const { data: cuotasExistentes, error: cuotasExistentesError } = await supabase
         .from('cuotas')
@@ -527,7 +541,7 @@ function CuotasTab() {
       }
 
       const sociosConCuota = new Set((cuotasExistentes || []).map((cuota) => cuota.socio_id))
-      const sociosPendientes = socios.filter((s) => !sociosConCuota.has(s.id))
+      const sociosPendientes = membresias.filter((m) => !sociosConCuota.has(m.socio_id))
 
       if (sociosPendientes.length === 0) {
         toast.info(`Las cuotas de ${periodo} ya estaban generadas para todos los socios activos`)
@@ -535,11 +549,12 @@ function CuotasTab() {
       }
 
       const cuotas = sociosPendientes.map((s) => ({
-        socio_id: s.id,
+        socio_id: s.socio_id,
         periodo,
         monto_esperado: montoCuota,
         monto_pagado: 0,
         estado: 'pendiente',
+        naturaleza: 'cuota_social',
       }))
 
       const { error } = await supabase.from('cuotas').insert(cuotas)
@@ -570,7 +585,7 @@ function CuotasTab() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        <div className="grid md:grid-cols-2 gap-4">
+        <div className="grid md:grid-cols-3 gap-4">
           <div className="space-y-2">
             <Label className="text-muted-foreground">Monto de cuota mensual (ARS)</Label>
             <Input
@@ -593,6 +608,17 @@ function CuotasTab() {
             />
             <p className="text-xs text-muted-foreground">
               Día del mes en que vencen las cuotas
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label className="text-muted-foreground">Inicio formal de percepción</Label>
+            <Input
+              type="date"
+              value={fechaInicioPercepcion}
+              onChange={(e) => setFechaInicioPercepcion(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              Hasta fijar esta fecha no se generan cuotas sociales.
             </p>
           </div>
         </div>

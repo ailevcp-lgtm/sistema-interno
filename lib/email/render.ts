@@ -567,5 +567,27 @@ export function renderEmailHtml(
         ${ctaButton('Ver balance', documentosUrl)}`,
       )
     }
+
+    case 'admision_asociado_resuelta': {
+      const accepted = data.decision === 'admitida'
+      const rows = [
+        infoRow('Decisión', accepted ? '<strong>Admisión aprobada</strong>' : '<strong>Solicitud rechazada</strong>'),
+        ...(accepted && data.categoria ? [infoRow('Categoría', data.categoria === 'pleno' ? 'Socio/a Pleno/a' : 'Socio/a Adherente')] : []),
+        infoRow('Resolución', `Res. CD N.º ${data.resolucion_numero}/${data.resolucion_anio}`),
+        infoRow('Fecha', formatDate(data.resolucion_fecha)),
+      ].join('')
+
+      return layout(
+        accepted ? 'Admisión como persona asociada' : 'Resolución de solicitud de admisión',
+        `${greeting}
+        <p style="margin:12px 0 0;color:${COLORS.foreground};font-size:14px;">
+          ${accepted
+            ? 'La Comisión Directiva de la ASOCIACIÓN CIVIL AILE resolvió admitir tu solicitud. Tu antigüedad se computa desde la fecha indicada.'
+            : 'La Comisión Directiva de la ASOCIACIÓN CIVIL AILE resolvió tu solicitud de admisión con resultado negativo.'}
+        </p>
+        ${detailsTable(rows)}
+        <p style="margin:16px 0 0;color:${COLORS.muted};font-size:13px;">Se adjunta el PDF de la resolución que documenta lo resuelto.</p>`,
+      )
+    }
   }
 }

@@ -95,6 +95,10 @@ export function getSubjectForNotification(data: EmailNotificationData): string {
       return `Nuevo decreto: Dec. ${data.decreto_numero}/${data.decreto_anio} - ${data.decreto_titulo}`
     case 'balance_nuevo':
       return `Nuevo balance disponible: ${data.balance_periodo}`
+    case 'admision_asociado_resuelta':
+      return data.decision === 'admitida'
+        ? 'AILE: tu solicitud de admisión fue aceptada'
+        : 'AILE: resolución sobre tu solicitud de admisión'
   }
 }
 
@@ -131,12 +135,18 @@ export interface SendNotificationResult {
 export async function sendEmailNotification(
   notificationType: EmailNotificationType,
   recipients: EmailRecipient[],
-  data: EmailNotificationData
+  data: EmailNotificationData,
+  options?: {
+    ignorePreferences?: boolean
+    attachments?: Array<{ filename: string; content: Buffer }>
+  }
 ): Promise<SendNotificationResult> {
   const result: SendNotificationResult = { sent: 0, skipped: 0, errors: 0 }
 
   // Filtrar por preferencias
-  const enabledRecipients = await getEnabledRecipients(recipients, notificationType)
+  const enabledRecipients = options?.ignorePreferences
+    ? recipients
+    : await getEnabledRecipients(recipients, notificationType)
   result.skipped = recipients.length - enabledRecipients.length
 
   if (enabledRecipients.length === 0) return result
@@ -156,6 +166,7 @@ export async function sendEmailNotification(
         to: recipient.email,
         subject,
         html,
+        attachments: options?.attachments,
       })
 
       if (error) {

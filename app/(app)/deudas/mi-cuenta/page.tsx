@@ -5,6 +5,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useCuotas } from '@/hooks/useSocios'
 import { formatARS, formatDate, formatPeriodo } from '@/lib/utils'
 import { ESTADO_CUOTA_COLORS } from '@/lib/constants'
+import { getUnpaidFeesCount } from '@/lib/statutory'
 import type { Cuota } from '@/lib/types'
 
 import { Button } from '@/components/ui/button'
@@ -49,7 +50,7 @@ export default function MiCuentaPage() {
   const totalDeuda = cuotasVencidas.reduce((sum, c) => sum + c.monto_esperado, 0) +
     cuotasPendientes.reduce((sum, c) => sum + (c.monto_esperado - c.monto_pagado), 0)
 
-  const tieneDeuda = totalDeuda > 0 || cuotasVencidas.length > 0
+  const cuotasImpagas = getUnpaidFeesCount(allCuotas)
 
   return (
     <div className="space-y-6">
@@ -76,6 +77,15 @@ export default function MiCuentaPage() {
           <Clock className="h-4 w-4 text-yellow-500" />
           <AlertDescription>
             Tenés {cuotasPendientes.length} cuota{cuotasPendientes.length > 1 ? 's' : ''} pendiente{cuotasPendientes.length > 1 ? 's' : ''} de pago
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {cuotasImpagas >= 3 && (
+        <Alert className="bg-red-500/10 border-red-500/30 text-red-700">
+          <AlertTriangle className="h-4 w-4 text-red-500" />
+          <AlertDescription>
+            Registrás {cuotasImpagas} cuotas impagas. El estatuto prevé notificación fehaciente y un plazo de regularización antes de cualquier decisión sobre cesantía.
           </AlertDescription>
         </Alert>
       )}

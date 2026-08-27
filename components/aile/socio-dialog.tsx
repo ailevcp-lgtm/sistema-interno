@@ -21,7 +21,6 @@ import {
 import { Label } from "@/components/ui/label"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Upload, X, Loader2 } from "lucide-react"
-import { ROLES_AILE } from "@/lib/constants"
 import { getInitials } from "@/lib/utils"
 import type { Socio, RolAile } from "@/lib/types"
 import { useRoles } from "@/hooks/useRoles"
@@ -41,7 +40,7 @@ export function SocioDialog({
     onSave,
     onUploadAvatar,
 }: SocioDialogProps) {
-    const { roles, loading: loadingRoles } = useRoles()
+    const { roles } = useRoles()
     const [loading, setLoading] = useState(false)
     const [uploading, setUploading] = useState(false)
     const fileInputRef = useRef<HTMLInputElement>(null)
@@ -53,6 +52,7 @@ export function SocioDialog({
         email: "",
         telefono: "",
         fecha_ingreso: new Date().toISOString().split("T")[0],
+        fecha_nacimiento: "",
         rol_aile: "Socio",
         avatar_url: "",
     })
@@ -66,6 +66,7 @@ export function SocioDialog({
                 email: socio.email,
                 telefono: socio.telefono || "",
                 fecha_ingreso: socio.fecha_ingreso.split("T")[0],
+                fecha_nacimiento: socio.fecha_nacimiento?.split("T")[0] || "",
                 rol_aile: socio.rol_aile as RolAile,
                 rol_aile_id: socio.rol_aile_id,
                 avatar_url: socio.avatar_url,
@@ -78,6 +79,7 @@ export function SocioDialog({
                 email: "",
                 telefono: "",
                 fecha_ingreso: new Date().toISOString().split("T")[0],
+                fecha_nacimiento: "",
                 rol_aile: "Socio",
                 rol_aile_id: undefined,
                 avatar_url: "",
@@ -105,7 +107,10 @@ export function SocioDialog({
     const handleSubmit = async () => {
         setLoading(true)
         try {
-            await onSave(formData)
+            await onSave({
+                ...formData,
+                fecha_nacimiento: formData.fecha_nacimiento || null,
+            })
             onOpenChange(false)
         } catch (error) {
             console.error("Save failed", error)
@@ -118,11 +123,11 @@ export function SocioDialog({
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="max-w-lg">
                 <DialogHeader>
-                    <DialogTitle>{socio ? "Editar socio" : "Nuevo socio"}</DialogTitle>
+                    <DialogTitle>{socio ? "Editar persona" : "Nueva persona"}</DialogTitle>
                     <DialogDescription>
                         {socio
-                            ? "Modifica los datos del socio existente"
-                            : "Completa los datos para registrar un nuevo socio"}
+                            ? "Modifica los datos de la persona vinculada a AILE"
+                            : "Completa los datos para registrar una persona en la comunidad"}
                     </DialogDescription>
                 </DialogHeader>
 
@@ -228,6 +233,17 @@ export function SocioDialog({
                         </div>
                     </div>
 
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                            <Label>Fecha de nacimiento</Label>
+                            <Input
+                                type="date"
+                                value={formData.fecha_nacimiento || ""}
+                                onChange={(e) => setFormData({ ...formData, fecha_nacimiento: e.target.value })}
+                            />
+                        </div>
+                    </div>
+
                     <div className="space-y-2">
                         <Label>Email</Label>
                         <Input
@@ -272,7 +288,7 @@ export function SocioDialog({
                         disabled={loading || uploading}
                     >
                         {loading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                        {socio ? "Guardar cambios" : "Crear socio"}
+                        {socio ? "Guardar cambios" : "Crear persona"}
                     </Button>
                 </DialogFooter>
             </DialogContent>

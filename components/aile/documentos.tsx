@@ -370,7 +370,7 @@ export function DocumentosPage() {
                   <LockKeyhole className="mt-0.5 h-5 w-5 shrink-0 text-emerald-700" />
                   <div>
                     <p className="text-sm font-semibold">Repositorio privado de documentación jurídica</p>
-                    <p className="mt-1 text-xs text-muted-foreground">Los archivos pueden contener datos personales y firmas. Se abren mediante enlaces temporales y no quedan expuestos públicamente.</p>
+                    <p className="mt-1 text-xs text-muted-foreground">Los archivos son privados por defecto. Sólo una copia expresamente revisada y marcada como pública aparece en el archivo institucional abierto.</p>
                   </div>
                 </CardContent>
               </Card>
@@ -397,6 +397,7 @@ export function DocumentosPage() {
                                   {estadoLabels[documento.estado_registro] || documento.estado_registro}
                                 </Badge>
                                 {documento.firma_digital && <Badge variant="outline" className="text-[10px]">Firma digital</Badge>}
+                                {documento.visibilidad === "publico" && <Badge variant="outline" className="border-emerald-500/40 bg-emerald-50 text-[10px] text-emerald-700">Publicado</Badge>}
                               </div>
                               <p className="mt-1 text-xs text-muted-foreground">
                                 {legalTypeLabels[documento.tipo]}

@@ -8,16 +8,17 @@ import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { getInitials, generateAvatarColor, formatDate } from "@/lib/utils"
+import { getSocioStatutoryStatus } from "@/lib/statutory"
 import { Loader2, Mail, Phone, Calendar, BadgeCheck, Shield } from "lucide-react"
 import type { Socio } from "@/lib/types"
 
 export default function MiPerfilPage() {
     const { user } = useAuth()
-    const { socios, loading } = useSocios()
+    const { allSocios, loading } = useSocios()
     const userData = useMemo<Socio | null>(() => {
         if (!user) return null
-        return socios.find((s) => s.email === user.email || s.usuario_id === user.id) || null
-    }, [socios, user])
+        return allSocios.find((s) => s.email === user.email || s.usuario_id === user.id) || null
+    }, [allSocios, user])
 
     if (user && loading) {
         return (
@@ -33,6 +34,7 @@ export default function MiPerfilPage() {
 
     const initials = getInitials(user.nombre || userData?.nombre || '', user.apellido || userData?.apellido || '')
     const avatarColor = generateAvatarColor(user.id)
+    const statutoryStatus = userData ? getSocioStatutoryStatus(userData) : null
 
     return (
         <div className="max-w-4xl mx-auto space-y-6">
@@ -60,6 +62,11 @@ export default function MiPerfilPage() {
                                     <span className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 border-transparent bg-primary/10 text-primary">
                                         {userData?.rol_aile || 'Socio'}
                                     </span>
+                                    {statutoryStatus?.isFormalMember && (
+                                        <span className="inline-flex items-center rounded-full border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-0.5 text-xs font-semibold text-cyan-600">
+                                            {statutoryStatus.categoriaLabel}
+                                        </span>
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -94,7 +101,7 @@ export default function MiPerfilPage() {
                 {/* Socio Info Card */}
                 <Card className="flex-1 border-border">
                     <CardHeader>
-                        <CardTitle>Datos de Socio</CardTitle>
+                        <CardTitle>Datos personales en AILE</CardTitle>
                         <CardDescription>Información registrada en AILE</CardDescription>
                     </CardHeader>
                     <CardContent>
@@ -118,6 +125,22 @@ export default function MiPerfilPage() {
                                     </div>
 
                                     <div className="space-y-2">
+                                        <label className="text-sm font-medium">Condición estatutaria actual</label>
+                                        <div className="relative">
+                                            <BadgeCheck className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                                            <Input value={statutoryStatus?.categoriaLabel || 'No asociado/a'} disabled className="pl-9" />
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-medium">Fecha de nacimiento</label>
+                                        <div className="relative">
+                                            <Calendar className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                                            <Input value={userData.fecha_nacimiento ? formatDate(userData.fecha_nacimiento) : 'No cargada'} disabled className="pl-9" />
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-2">
                                         <label className="text-sm font-medium">Fecha de Ingreso</label>
                                         <div className="relative">
                                             <Calendar className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -133,6 +156,21 @@ export default function MiPerfilPage() {
                                         </div>
                                     </div>
                                 </div>
+
+                                {statutoryStatus && (
+                                    <div className={`rounded-lg border p-4 ${statutoryStatus.canVote ? 'border-green-200 bg-green-50 dark:border-green-900 dark:bg-green-950/20' : 'border-yellow-200 bg-yellow-50 dark:border-yellow-900 dark:bg-yellow-950/20'}`}>
+                                        <p className={`text-sm font-medium ${statutoryStatus.canVote ? 'text-green-700 dark:text-green-400' : 'text-yellow-700 dark:text-yellow-400'}`}>
+                                            {statutoryStatus.canVote
+                                                ? 'Hoy figuras en condiciones estatutarias de votar.'
+                                                : 'Hoy no figuras en condiciones estatutarias de votar.'}
+                                        </p>
+                                        {!statutoryStatus.canVote && statutoryStatus.reasons.length > 0 && (
+                                            <p className="mt-2 text-sm text-muted-foreground">
+                                                {statutoryStatus.reasons[0]}
+                                            </p>
+                                        )}
+                                    </div>
+                                )}
 
                                 {userData.tiene_deuda && (
                                     <div className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900 rounded-lg p-4">

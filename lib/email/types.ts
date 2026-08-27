@@ -22,6 +22,7 @@ export type EmailNotificationType =
   | 'resolucion_nueva'
   | 'decreto_nuevo'
   | 'balance_nuevo'
+  | 'admision_asociado_resuelta'
 
 export interface EmailRecipient {
   socio_id: string
@@ -196,6 +197,15 @@ export interface BalanceNuevoData {
   creado_por_nombre: string
 }
 
+export interface AdmisionAsociadoResueltaData {
+  type: 'admision_asociado_resuelta'
+  decision: 'admitida' | 'rechazada'
+  categoria?: 'pleno' | 'adherente' | null
+  resolucion_numero: number
+  resolucion_anio: number
+  resolucion_fecha: string
+}
+
 // ── Union type ──────────────────────────────────────────
 
 export type EmailNotificationData =
@@ -216,6 +226,7 @@ export type EmailNotificationData =
   | ResolucionNuevaData
   | DecretoNuevoData
   | BalanceNuevoData
+  | AdmisionAsociadoResueltaData
 
 // Mapeo de tipo de notificación a columna de preferencia
 export const NOTIFICATION_PREFERENCE_MAP: Record<EmailNotificationType, string> = {
@@ -236,6 +247,7 @@ export const NOTIFICATION_PREFERENCE_MAP: Record<EmailNotificationType, string> 
   resolucion_nueva: 'resolucion_nueva',
   decreto_nuevo: 'decreto_nuevo',
   balance_nuevo: 'balance_nuevo',
+  admision_asociado_resuelta: 'resolucion_nueva',
 }
 
 export const NOTIFICATION_LABELS: Record<EmailNotificationType, string> = {
@@ -259,6 +271,7 @@ export const NOTIFICATION_LABELS: Record<EmailNotificationType, string> = {
   resolucion_nueva: 'Cuando se publica una nueva resolución de CD',
   decreto_nuevo: 'Cuando se publica un nuevo decreto',
   balance_nuevo: 'Cuando se publica un nuevo balance',
+  admision_asociado_resuelta: 'Cuando CD resuelve mi solicitud de admisión',
 }
 
 export const NOTIFICATION_CATEGORIES = [
@@ -292,6 +305,7 @@ export const NOTIFICATION_CATEGORIES = [
       'resolucion_nueva',
       'decreto_nuevo',
       'balance_nuevo',
+      'admision_asociado_resuelta',
     ] as EmailNotificationType[],
   },
 ]
